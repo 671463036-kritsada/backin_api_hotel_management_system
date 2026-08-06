@@ -82,6 +82,21 @@ exports.deleteBooking = async (req, res) => {
   }
 };
 
+
+
+exports.checkIn = async (req, res) => {
+    const bookingId = req.params.id;
+
+    const result = await bookingService.checkIn(
+        bookingId,
+        req.body
+    );
+
+    res.json(result);
+};
+
+
+
 // Admin shortcuts
 exports.approveBooking = async (req, res) => {
   try {

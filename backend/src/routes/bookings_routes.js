@@ -11,6 +11,11 @@ router.get("/", bookingController.getBookings);
 router.get("/:id", bookingController.getBookingById);
 router.put("/:id", bookingController.updateBooking);
 router.delete("/:id", bookingController.deleteBooking);
+router.patch(
+    "/bookings/:id/checkin",
+    authMiddleware,
+    bookingController.checkIn
+);
 
 // Admin shortcuts
 router.post("/:id/approve", bookingController.approveBooking);

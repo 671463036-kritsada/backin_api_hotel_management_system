@@ -18,6 +18,9 @@ const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
 const authRoutes = require("./routes/auth_routes");
 const userRoutes = require("./routes/user_routes");
 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use("/api/uploads", express.static(path.join(__dirname, "./uploads")));
+
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
   .map((origin) => origin.trim());

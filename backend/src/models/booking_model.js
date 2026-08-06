@@ -1,22 +1,21 @@
 const db = require("../config/db");
 
-const { generateBookingId } = require("../utils/id_generate_id");
+const { generateBookingId } = require("../utils/id_generator");
 
 async function createBooking(data) {
+  const year = new Date().getFullYear();
   const prefix = `BK-${year}%`;
 
   const [rows] = await db.query(
     `
-  SELECT id
-  FROM bookings
-  WHERE id LIKE ?
-  ORDER BY id DESC
-  LIMIT 1
-`,
+    SELECT id
+    FROM bookings
+    WHERE id LIKE ?
+    ORDER BY id DESC
+    LIMIT 1
+    `,
     [prefix],
   );
-
-  const year = new Date().getFullYear();
 
   let seq = 1;
 
@@ -30,7 +29,8 @@ async function createBooking(data) {
     INSERT INTO bookings (
       id, user_id, customer_name, room_id, check_in, check_out,
       rooms_count, person_count, amount, phone, email, bank_account,
-      address, status, payment_status, slip_url, check_in_status, check_out_status, inspection_status, room_key, created_at
+      address, status, payment_status, slip_url, check_in_status,
+      check_out_status, inspection_status, room_key, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
   `;
 
@@ -53,11 +53,11 @@ async function createBooking(data) {
     data.slip_url || data.paymentSlip || null,
     data.check_in_status || data.checkInStatus || "NOT_CHECKED_IN",
     data.check_out_status || data.checkOutStatus || "NOT_CHECKED_OUT",
-    data.inspection_status || data.inspectionStatus || "NONE",
+    data.inspection_status || data.inspectionStatus || "PENDING",
     data.room_key || data.roomKey || null,
   ];
 
-  const [result] = await db.execute(sql, values);
+  await db.execute(sql, values);
 
   return { insertId: id };
 }
@@ -112,6 +112,10 @@ async function updateBooking(id, data) {
     fields.push("payment_status = ?");
     params.push(data.payment_status || data.paymentStatus);
   }
+  if (data.slip_url || data.slipUrl) {
+    fields.push("slip_url = ?");
+    params.push(data.slip_url || data.slipUrl);
+  }
   if (data.check_in_status || data.checkInStatus) {
     fields.push("check_in_status = ?");
     params.push(data.check_in_status || data.checkInStatus);
@@ -138,6 +142,49 @@ async function deleteBooking(id) {
   return result;
 }
 
+// update status check in , check out , inspection
+
+async function updateCheckInStatus(id, data) {
+    const sql = `
+        UPDATE bookings
+        SET
+            check_in_status = 'CHECKED_IN',
+            status = 'CHECKED_IN',
+            updated_at = NOW()
+        WHERE id = ?
+    `;
+
+    const [result] = await db.execute(sql, [id]);
+
+    return result;
+}
+
+async function updateCheckOutStatus(id, status) {
+  const [result] = await db.execute(
+    `
+    UPDATE bookings
+    SET check_out_status = ?, updated_at = NOW()
+    WHERE id = ?
+    `,
+    [status, id],
+  );
+
+  return result;
+}
+
+async function updateInspectionStatus(id, status) {
+  const [result] = await db.execute(
+    `
+    UPDATE bookings
+    SET inspection_status = ?, updated_at = NOW()
+    WHERE id = ?
+    `,
+    [status, id],
+  );
+
+  return result;
+}
+
 module.exports = {
   createBooking,
   getBookings,
@@ -145,4 +192,7 @@ module.exports = {
   getBookingsByUserId,
   updateBooking,
   deleteBooking,
+  updateCheckInStatus,
+  updateCheckOutStatus,
+  updateInspectionStatus,
 };

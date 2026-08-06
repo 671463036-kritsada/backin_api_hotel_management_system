@@ -11,7 +11,10 @@ const createUpload = (folder = "uploads", allowVideo = false) => {
     },
     filename: (req, file, cb) => {
       const ext = path.extname(file.originalname);
-      cb(null, `${folder}_${Date.now()}${ext}`);
+      // ใช้ field name ของไฟล์ (เช่น "idCardImage") แทน folder path
+      // และแทนที่ "/" ด้วย "_" กันไว้อีกชั้น เผื่อ folder ยังมี "/" อยู่
+      const safePrefix = file.fieldname || folder.replace(/\//g, "_");
+      cb(null, `${safePrefix}_${Date.now()}${ext}`);
     },
   });
 
@@ -19,7 +22,6 @@ const createUpload = (folder = "uploads", allowVideo = false) => {
     const allowedImage = [".jpg", ".jpeg", ".png", ".webp"];
     const allowedVideo = [".mp4", ".webm", ".mov", ".ogg"];
     const ext = path.extname(file.originalname).toLowerCase();
-
     const allowed = allowVideo
       ? [...allowedImage, ...allowedVideo]
       : allowedImage;
@@ -35,8 +37,8 @@ const createUpload = (folder = "uploads", allowVideo = false) => {
   };
 
   const limit = allowVideo
-    ? { fileSize: 200 * 1024 * 1024 } // 200MB สำหรับวิดีโอ
-    : { fileSize: 5 * 1024 * 1024 }; // 5MB สำหรับรูปภาพ
+    ? { fileSize: 200 * 1024 * 1024 }
+    : { fileSize: 5 * 1024 * 1024 };
 
   return multer({ storage, fileFilter, limits: limit });
 };

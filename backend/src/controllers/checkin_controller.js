@@ -7,7 +7,23 @@ exports.createCheckIn = async (req, res) => {
       req.headers && req.headers["content-type"],
     );
     console.log("createCheckIn body:", req.body);
-    const result = await checkinService.createCheckIn(req.body);
+    console.log("createCheckIn files:", req.files); // debug ดูว่า multer ส่งไฟล์มาถูกไหม
+
+    // ดึง path ของไฟล์ที่ multer บันทึกไว้แล้ว
+    const idCardImagePath = req.files?.idCardImage?.[0]
+      ? `uploads/checkins/${req.files.idCardImage[0].filename}`
+      : null;
+    const paymentSlipImagePath = req.files?.paymentSlipImage?.[0]
+      ? `uploads/checkins/${req.files.paymentSlipImage[0].filename}`
+      : null;
+
+    const data = {
+      ...req.body,
+      idCardImage: idCardImagePath,
+      paymentSlipImage: paymentSlipImagePath,
+    };
+
+    const result = await checkinService.createCheckIn(data);
     res.status(result.statusCode || 201).json(result);
   } catch (error) {
     res.status(500).json({

@@ -20,6 +20,12 @@ async function createBooking(userId, customerName, data) {
   };
 }
 
+
+async function checkIn(id, data) {
+    return await bookingModel.updateCheckInStatus(id, data);
+}
+
+
 async function getBookings() {
   const data = await bookingModel.getBookings();
   return { success: true, data };
