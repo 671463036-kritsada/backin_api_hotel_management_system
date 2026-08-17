@@ -1,5 +1,21 @@
 const roomService = require("../services/room_service");
 
+exports.getAvailableRooms = async (req, res) => {
+  try {
+    const { checkIn, checkOut, roomType } = req.query;
+    const result = await roomService.getAvailableRooms({
+      checkIn,
+      checkOut,
+      roomType,
+    });
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "getAvailableRooms failed", error: error.message });
+  }
+};
+
 exports.getRooms = async (req, res) => {
   try {
     const result = await roomService.getRooms();
@@ -31,6 +47,19 @@ exports.createRoom = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       message: "createRoom failed",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateRoomStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const result = await roomService.updateRoomStatus(req.params.id, status);
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res.status(500).json({
+      message: "updateRoomStatus failed",
       error: error.message,
     });
   }

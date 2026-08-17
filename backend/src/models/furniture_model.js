@@ -1,150 +1,84 @@
-const mockFurniture = [
-  {
-    id: 1,
-    roomId: 205,
-    title: "เตียงนอน",
-    image: "assets/images/furnitures/bed.jpg",
-    inspections: [
-      {
-        inspectorId: 5,
-        inspectorName: "แม่บ้าน สมหญิง",
-        inspectorRole: "housekeeper",
-        status: "ปกติ",
-        note: null,
-        damageImage: null,
-        inspectedAt: "2026-02-14T09:00:00Z",
-      },
-    ],
-  },
-  {
-    id: 2,
-    roomId: 205,
-    title: "เครื่องปรับอากาศ",
-    image: "assets/images/furnitures/airconditioner.jpg",
-    inspections: [
-      {
-        inspectorId: 5,
-        inspectorName: "แม่บ้าน สมหญิง",
-        inspectorRole: "housekeeper",
-        status: "ปกติ",
-        note: null,
-        damageImage: null,
-        inspectedAt: "2026-02-14T09:02:00Z",
-      },
-    ],
-  },
-  {
-    id: 3,
-    roomId: 205,
-    title: "ตู้เย็น / มินิบาร์",
-    image: "assets/images/furnitures/fridge.jpg",
-    inspections: [
-      {
-        inspectorId: 5,
-        inspectorName: "แม่บ้าน สมหญิง",
-        inspectorRole: "housekeeper",
-        status: "ปกติ",
-        note: null,
-        damageImage: null,
-        inspectedAt: "2026-02-14T09:03:00Z",
-      },
-    ],
-  },
-  {
-    id: 4,
-    roomId: 205,
-    title: "ทีวี และ รีโมท",
-    image: "assets/images/furnitures/TV.jpg",
-    inspections: [
-      {
-        inspectorId: 5,
-        inspectorName: "แม่บ้าน สมหญิง",
-        inspectorRole: "housekeeper",
-        status: "ปกติ",
-        note: null,
-        damageImage: null,
-        inspectedAt: "2026-02-14T09:04:00Z",
-      },
-    ],
-  },
-];
+const db = require("../config/db");
 
-let repository = null;
+async function getFurnitureByRoomAndBooking(roomId, bookingId) {
+  const [rows] = await db.query(
+    `SELECT 
+        f.id,
+        f.room_id AS roomId,
+        f.title,
+        f.image,
+        f.is_extra AS isCustom,
+        fi.inspector_id AS inspectorId,
+        u.name AS inspectorName,
+        u.role AS inspectorRole,
+        fi.status,
+        fi.note,
+        fi.damage_image AS damageImage,
+        fi.inspected_at AS inspectedAt
+     FROM furnitures f
+     LEFT JOIN furniture_inspections fi 
+       ON fi.id = (
+         SELECT fi2.id
+         FROM furniture_inspections fi2
+         WHERE fi2.furniture_id = f.id AND fi2.booking_id = ?
+         ORDER BY fi2.inspected_at DESC, fi2.id DESC
+         LIMIT 1
+       )
+     LEFT JOIN users u ON u.id = fi.inspector_id
+     WHERE f.room_id = ?
+     ORDER BY f.id`,
+    [bookingId, roomId],
+  );
 
-function setRepository(repo) {
-  repository = repo;
+  return rows.map((row) => ({
+    id: row.id,
+    roomId: row.roomId,
+    title: row.title,
+    image: row.image,
+    isCustom: !!row.isCustom,
+    inspections: row.inspectorId
+      ? [
+          {
+            inspectorId: row.inspectorId,
+            inspectorName: row.inspectorName,
+            inspectorRole: row.inspectorRole,
+            status: row.status,
+            note: row.note,
+            damageImage: row.damageImage,
+            inspectedAt: row.inspectedAt,
+          },
+        ]
+      : [],
+  }));
 }
 
-function buildResponse(data, message = "success", statusCode = 200) {
-  return {
-    message,
-    statusCode,
-    data,
-  };
+async function createFurnitureInspection(data) {
+  // ไม่แก้อะไร — ยัง insert ทุกครั้งเหมือนเดิม เพื่อเก็บประวัติไว้ครบ
+  let furnitureId = data.furnitureId;
+  if (!furnitureId) {
+    const [result] = await db.execute(
+      `INSERT INTO furnitures (room_id, title, image, is_extra) VALUES (?, ?, ?, 1)`,
+      [data.roomId, data.title, data.image || null],
+    );
+    furnitureId = result.insertId;
+  }
+  const [result] = await db.execute(
+    `INSERT INTO furniture_inspections 
+       (furniture_id, booking_id, inspector_id, status, note, damage_image, inspected_at)
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      furnitureId,
+      data.bookingId,
+      data.inspectorId,
+      data.status,
+      data.note || null,
+      data.damageImage || null,
+    ],
+  );
+  return { insertId: result.insertId, furnitureId };
 }
 
-exports.getFurniture = async () => {
-  if (repository && typeof repository.getFurniture === "function") {
-    return repository.getFurniture();
-  }
-
-  return buildResponse(mockFurniture);
+module.exports = {
+  getFurnitureByRoomAndBooking,
+  createFurnitureInspection,
 };
-
-exports.getFurnitureById = async (id) => {
-  if (repository && typeof repository.getFurnitureById === "function") {
-    return repository.getFurnitureById(id);
-  }
-
-  const item = mockFurniture.find((entry) => entry.id === Number(id));
-  if (!item) {
-    return buildResponse(null, "furniture not found", 404);
-  }
-
-  return buildResponse(item);
-};
-
-exports.createFurniture = async (data) => {
-  if (repository && typeof repository.createFurniture === "function") {
-    return repository.createFurniture(data);
-  }
-
-  const newItem = {
-    id: mockFurniture.length + 1,
-    ...data,
-  };
-
-  mockFurniture.push(newItem);
-  return buildResponse(newItem, "furniture created", 201);
-};
-
-exports.updateFurniture = async (id, data) => {
-  if (repository && typeof repository.updateFurniture === "function") {
-    return repository.updateFurniture(id, data);
-  }
-
-  const index = mockFurniture.findIndex((entry) => entry.id === Number(id));
-  if (index === -1) {
-    return buildResponse(null, "furniture not found", 404);
-  }
-
-  mockFurniture[index] = { ...mockFurniture[index], ...data, id: Number(id) };
-  return buildResponse(mockFurniture[index]);
-};
-
-exports.deleteFurniture = async (id) => {
-  if (repository && typeof repository.deleteFurniture === "function") {
-    return repository.deleteFurniture(id);
-  }
-
-  const index = mockFurniture.findIndex((entry) => entry.id === Number(id));
-  if (index === -1) {
-    return buildResponse(null, "furniture not found", 404);
-  }
-
-  mockFurniture.splice(index, 1);
-  return buildResponse({ id: Number(id) }, "furniture deleted");
-};
-
-exports.mockFurniture = mockFurniture;
-exports.setRepository = setRepository;

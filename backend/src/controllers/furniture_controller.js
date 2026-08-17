@@ -2,7 +2,15 @@ const furnitureService = require("../services/furniture_service");
 
 exports.getFurniture = async (req, res) => {
   try {
-    const result = await furnitureService.getFurniture();
+    const { roomId, bookingId } = req.query;
+    if (!roomId || !bookingId) {
+      return res.status(400).json({
+        message: "roomId และ bookingId จำเป็นต้องระบุ",
+        statusCode: 400,
+        data: null,
+      });
+    }
+    const result = await furnitureService.getFurniture(roomId, bookingId);
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({
@@ -12,52 +20,14 @@ exports.getFurniture = async (req, res) => {
   }
 };
 
-exports.getFurnitureById = async (req, res) => {
+exports.submitReport = async (req, res) => {
   try {
-    const result = await furnitureService.getFurnitureById(req.params.id);
-    res.status(result.statusCode || 200).json(result);
-  } catch (error) {
-    res.status(500).json({
-      message: "getFurnitureById failed",
-      error: error.message,
-    });
-  }
-};
-
-exports.createFurniture = async (req, res) => {
-  try {
-    const result = await furnitureService.createFurniture(req.body);
+    const inspectorId = req.user?.id; // ดึงจาก token เหมือน endpoint อื่น
+    const result = await furnitureService.submitReport(req.body, inspectorId);
     res.status(result.statusCode || 201).json(result);
   } catch (error) {
     res.status(500).json({
-      message: "createFurniture failed",
-      error: error.message,
-    });
-  }
-};
-
-exports.updateFurniture = async (req, res) => {
-  try {
-    const result = await furnitureService.updateFurniture(
-      req.params.id,
-      req.body,
-    );
-    res.status(result.statusCode || 200).json(result);
-  } catch (error) {
-    res.status(500).json({
-      message: "updateFurniture failed",
-      error: error.message,
-    });
-  }
-};
-
-exports.deleteFurniture = async (req, res) => {
-  try {
-    const result = await furnitureService.deleteFurniture(req.params.id);
-    res.status(result.statusCode || 200).json(result);
-  } catch (error) {
-    res.status(500).json({
-      message: "deleteFurniture failed",
+      message: "submitReport failed",
       error: error.message,
     });
   }

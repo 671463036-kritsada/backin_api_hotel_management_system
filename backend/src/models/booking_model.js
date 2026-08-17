@@ -1,5 +1,4 @@
 const db = require("../config/db");
-
 const { generateBookingId } = require("../utils/id_generator");
 
 async function createBooking(data) {
@@ -144,30 +143,35 @@ async function deleteBooking(id) {
 
 // update status check in , check out , inspection
 
-async function updateCheckInStatus(id, data) {
-    const sql = `
-        UPDATE bookings
-        SET
-            check_in_status = 'CHECKED_IN',
-            status = 'CHECKED_IN',
-            updated_at = NOW()
-        WHERE id = ?
-    `;
+async function updateCheckInStatus(id, data = {}) {
+  const roomKey = data.room_key || data.roomKey || null;
 
-    const [result] = await db.execute(sql, [id]);
+  const sql = `
+    UPDATE bookings
+    SET
+      check_in_status = 'CHECKED_IN',
+      status = 'CHECKED_IN',
+      room_key = COALESCE(?, room_key),
+      updated_at = NOW()
+    WHERE id = ?
+  `;
 
-    return result;
+  const [result] = await db.execute(sql, [roomKey, id]);
+
+  return result;
 }
 
-async function updateCheckOutStatus(id, status) {
-  const [result] = await db.execute(
-    `
+async function updateCheckOutStatus(id, status = "CHECKED_OUT") {
+  const sql = `
     UPDATE bookings
-    SET check_out_status = ?, updated_at = NOW()
+    SET
+      check_out_status = ?,
+      status = 'CHECKED_OUT',
+      updated_at = NOW()
     WHERE id = ?
-    `,
-    [status, id],
-  );
+  `;
+
+  const [result] = await db.execute(sql, [status, id]);
 
   return result;
 }

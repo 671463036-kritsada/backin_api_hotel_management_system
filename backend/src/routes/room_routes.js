@@ -4,9 +4,11 @@ const { authMiddleware } = require("../middleware/auth_middleware");
 const { isAdmin } = require("../middleware/role_middleware");
 const router = express.Router();
 
-// Public 
+// Public
 router.get("/", roomController.getRooms);
+router.get("/available", roomController.getAvailableRooms);
 router.get("/:id", roomController.getRoomById);
+router.patch("/:id/status", roomController.updateRoomStatus);
 
 // Admin only - ต้อง login และเป็น admin เท่านั้น
 router.post("/", authMiddleware, isAdmin, roomController.createRoom);

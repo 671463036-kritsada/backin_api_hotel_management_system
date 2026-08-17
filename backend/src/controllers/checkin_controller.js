@@ -1,5 +1,18 @@
 const checkinService = require("../services/checkin_service");
 
+exports.updateRoomStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const result = await roomService.updateRoomStatus(req.params.id, status);
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res.status(500).json({
+      message: "updateRoomStatus failed",
+      error: error.message,
+    });
+  }
+};
+
 exports.createCheckIn = async (req, res) => {
   try {
     console.log(

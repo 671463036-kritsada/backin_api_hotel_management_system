@@ -1,12 +1,10 @@
 const express = require("express");
 const furnitureController = require("../controllers/furniture_controller");
+const {authMiddleware} = require("../middleware/auth_middleware");
 
 const router = express.Router();
 
 router.get("/", furnitureController.getFurniture);
-router.get("/:id", furnitureController.getFurnitureById);
-router.post("/", furnitureController.createFurniture);
-router.put("/:id", furnitureController.updateFurniture);
-router.delete("/:id", furnitureController.deleteFurniture);
+router.post("/report", authMiddleware, furnitureController.submitReport);
 
 module.exports = router;

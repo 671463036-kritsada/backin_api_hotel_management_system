@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const { generateRoomId } = require("../utils/id_generator");
+
 function buildResponse(data, message = "success", statusCode = 200) {
   return { message, statusCode, data };
 }
@@ -28,21 +29,66 @@ exports.getRoomById = async (id) => {
   }
 };
 
+exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
+  try {
+    let sql = `
+      SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, status, image_url AS imageUrl, created_at AS createdAt
+      FROM rooms r
+      WHERE r.id NOT IN (
+        SELECT b.room_id
+        FROM bookings b
+        WHERE b.room_id IS NOT NULL
+          AND b.status NOT IN ('ยกเลิก')
+          AND b.check_in < ?
+          AND b.check_out > ?
+      )
+    `;
+
+    const params = [checkOut, checkIn];
+
+    if (roomType) {
+      sql += ` AND r.room_type = ?`;
+      params.push(roomType);
+    }
+
+    sql += ` ORDER BY r.id ASC`;
+
+    const [rows] = await db.query(sql, params);
+    return buildResponse(rows);
+  } catch (err) {
+    return buildResponse(null, `getAvailableRooms error: ${err.message}`, 500);
+  }
+};
+
+// เช็คว่าห้องนี้ว่างในช่วงวันที่ที่ระบุไหม (ใช้ก่อนสร้าง booking เพื่อป้องกันการจองซ้ำ)
+exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
+  const [rows] = await db.query(
+    `
+    SELECT COUNT(*) AS count
+    FROM bookings
+    WHERE room_id = ?
+      AND status NOT IN ('ยกเลิก', 'REJECTED')
+      AND check_in < ?
+      AND check_out > ?
+    `,
+    [roomId, checkOut, checkIn],
+  );
+  return rows[0].count === 0;
+};
+
 // หาลำดับถัดไปของแต่ละประเภทห้อง โดยนับจากจำนวนห้องที่มี prefix เดียวกันอยู่แล้ว
 async function getNextSeq(roomType) {
   const prefix = roomType === "house" ? "H" : "R";
-  // ใช้ REGEXP กรองเฉพาะ id ที่ตรงรูปแบบ Prefix + ตัวเลขล้วนๆ เท่านั้น
-  // BINARY เพื่อบังคับให้เทียบแบบ case-sensitive กัน r/R ปนกัน
   const [rows] = await db.execute(
     `SELECT id FROM rooms 
      WHERE id REGEXP BINARY ?
      ORDER BY CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC 
      LIMIT 1`,
-    [`^${prefix}[0-9]+$`]
+    [`^${prefix}[0-9]+$`],
   );
   if (rows.length === 0) return 1;
   const lastId = rows[0].id;
-  const lastSeq = parseInt(lastId.slice(1), 10); // ตัดตัวแรก (prefix) ออก แทน replace
+  const lastSeq = parseInt(lastId.slice(1), 10);
   return lastSeq + 1;
 }
 
@@ -54,7 +100,6 @@ exports.createRoom = async (data) => {
       null;
 
     const roomType = data.roomType || data.room_type || "rooms";
-    // แปลง "rooms" -> "room" ให้ตรงกับเงื่อนไขใน generateRoomId (ดูหมายเหตุด้านล่าง)
     const normalizedType = roomType === "house" ? "house" : "room";
 
     let id = data.id;
@@ -80,6 +125,22 @@ exports.createRoom = async (data) => {
     return buildResponse(roomResp.data, "room created", 201);
   } catch (err) {
     return buildResponse(null, `createRoom error: ${err.message}`, 500);
+  }
+};
+
+exports.updateRoomStatus = async (id, status) => {
+  try {
+    const [result] = await db.execute(
+      `UPDATE rooms SET status = ?, updated_at = NOW() WHERE id = ?`,
+      [status, id],
+    );
+    if (result.affectedRows === 0)
+      return buildResponse(null, "room not found", 404);
+
+    const roomResp = await exports.getRoomById(id);
+    return buildResponse(roomResp.data, "room status updated", 200);
+  } catch (err) {
+    return buildResponse(null, `updateRoomStatus error: ${err.message}`, 500);
   }
 };
 
@@ -140,3 +201,5 @@ exports.deleteRoom = async (id) => {
     return buildResponse(null, `deleteRoom error: ${err.message}`, 500);
   }
 };
+
+exports.buildResponse = buildResponse;
