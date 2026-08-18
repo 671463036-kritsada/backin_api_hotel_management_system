@@ -42,7 +42,11 @@ async function createBooking(data) {
     data.check_out || data.checkOutDate || null,
     data.rooms_count || data.roomsCount || 1,
     data.person_count || data.personCount || data.numberOfGuests || 1,
-    data.amount || data.totalPrice || 0,
+    data.deposit_amount ||
+      data.depositAmount ||
+      data.amount ||
+      data.totalPrice ||
+      0,
     data.phone || data.phoneNumber || null,
     data.email || null,
     data.bank_account || data.bankAccount || null,
@@ -99,9 +103,19 @@ async function updateBooking(id, data) {
     fields.push("check_out = ?");
     params.push(data.check_out || data.checkOutDate);
   }
-  if (data.amount || data.totalPrice) {
+  if (
+    data.deposit_amount ||
+    data.depositAmount ||
+    data.amount ||
+    data.totalPrice
+  ) {
     fields.push("amount = ?");
-    params.push(data.amount || data.totalPrice);
+    params.push(
+      data.deposit_amount ||
+        data.depositAmount ||
+        data.amount ||
+        data.totalPrice,
+    );
   }
   if (data.status) {
     fields.push("status = ?");
