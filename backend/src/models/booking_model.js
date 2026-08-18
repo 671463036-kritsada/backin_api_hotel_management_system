@@ -27,11 +27,17 @@ async function createBooking(data) {
   const sql = `
     INSERT INTO bookings (
       id, user_id, customer_name, room_id, check_in, check_out,
-      rooms_count, person_count, amount, phone, email, bank_account,
-      address, status, payment_status, slip_url, check_in_status,
-      check_out_status, inspection_status, room_key, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      rooms_count, person_count, amount, paid_amount, remaining_amount,
+      phone, email, bank_account, address, status, payment_status,
+      slip_url, check_in_status, check_out_status, inspection_status,
+      room_key, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
   `;
+
+  const totalPrice = data.total_price || data.totalPrice || 0;
+  const paidAmount = data.paid_amount || data.depositAmount || 0;
+  const remainingAmount =
+    data.remaining_amount || data.remainingAmount || totalPrice - paidAmount;
 
   const values = [
     id,
@@ -42,11 +48,9 @@ async function createBooking(data) {
     data.check_out || data.checkOutDate || null,
     data.rooms_count || data.roomsCount || 1,
     data.person_count || data.personCount || data.numberOfGuests || 1,
-    data.deposit_amount ||
-      data.depositAmount ||
-      data.amount ||
-      data.totalPrice ||
-      0,
+    totalPrice,
+    paidAmount,
+    remainingAmount,
     data.phone || data.phoneNumber || null,
     data.email || null,
     data.bank_account || data.bankAccount || null,
@@ -103,19 +107,17 @@ async function updateBooking(id, data) {
     fields.push("check_out = ?");
     params.push(data.check_out || data.checkOutDate);
   }
-  if (
-    data.deposit_amount ||
-    data.depositAmount ||
-    data.amount ||
-    data.totalPrice
-  ) {
+  if (data.total_price || data.totalPrice) {
     fields.push("amount = ?");
-    params.push(
-      data.deposit_amount ||
-        data.depositAmount ||
-        data.amount ||
-        data.totalPrice,
-    );
+    params.push(data.total_price || data.totalPrice);
+  }
+  if (data.paid_amount || data.depositAmount) {
+    fields.push("paid_amount = ?");
+    params.push(data.paid_amount || data.depositAmount);
+  }
+  if (data.remaining_amount || data.remainingAmount) {
+    fields.push("remaining_amount = ?");
+    params.push(data.remaining_amount || data.remainingAmount);
   }
   if (data.status) {
     fields.push("status = ?");
@@ -154,8 +156,6 @@ async function deleteBooking(id) {
   const [result] = await db.execute(`DELETE FROM bookings WHERE id = ?`, [id]);
   return result;
 }
-
-// update status check in , check out , inspection
 
 async function updateCheckInStatus(id, data = {}) {
   const roomKey = data.room_key || data.roomKey || null;
