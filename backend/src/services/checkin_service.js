@@ -1,19 +1,56 @@
 const fs = require("fs");
 const checkinModel = require("../models/checkin_model");
 const bookingModel = require("../models/booking_model");
+const promotionService = require("../services/promotion_service");
 
 function buildResponse(data, message = "success", statusCode = 200) {
   return { message, statusCode, data };
 }
 
-async function createCheckIn(data) {
+async function createCheckIn(data, userId) {
   try {
-    if (!data.bookingId && !data.booking_id) {
+    const bookingId = data.bookingId || data.booking_id;
+    if (!bookingId) {
       return buildResponse(null, "กรุณาระบุ bookingId", 400);
     }
-    const result = await checkinModel.createCheckIn(data);
-    const bookingId = data.bookingId || data.booking_id;
-    await bookingModel.updateCheckInStatus(bookingId);
+
+    const booking = await bookingModel.getBookingById(bookingId);
+    if (!booking) {
+      return buildResponse(null, "ไม่พบข้อมูลการจอง", 404);
+    }
+
+    const baseAmount = Number(booking.remaining_amount) || 0;
+    let discountAmount = 0;
+    let userPromotionId =
+      data.userPromotionId || data.user_promotion_id || null;
+    let promotionId = null;
+
+    if (userPromotionId) {
+      const couponResult = await promotionService.validateAndCalculateDiscount(
+        userPromotionId,
+        userId,
+        baseAmount,
+      );
+      if (!couponResult.valid) {
+        return buildResponse(null, couponResult.message, 400);
+      }
+      discountAmount = couponResult.discountAmount;
+      promotionId = couponResult.promotionId;
+    }
+
+    const amountPaid = Math.max(baseAmount - discountAmount, 0);
+
+    const checkinData = {
+      ...data,
+      bookingId,
+      userPromotionId,
+      discountAmount,
+      amountPaid,
+    };
+
+    const result = await checkinModel.createCheckIn(checkinData);
+
+    await bookingModel.updateCheckInStatus(bookingId, data);
 
     if (data.paymentSlipImage || data.payment_slip_image) {
       await bookingModel.updateBooking(bookingId, {
@@ -22,15 +59,21 @@ async function createCheckIn(data) {
       });
     }
 
+    if (userPromotionId) {
+      await promotionService.markCouponUsed(
+        userPromotionId,
+        promotionId,
+        bookingId,
+      );
+    }
+
     const checkin = await checkinModel.getCheckInById(result.insertId);
     return buildResponse(checkin, "checkin created", 201);
   } catch (err) {
-    //ลบไฟล์ที่ multer อัปโหลดไว้แล้ว ถ้า DB insert ล้มเหลว ป้องกันไฟล์กำพร้า
     const filesToCleanup = [
       data.idCardImage || data.id_card_image,
       data.paymentSlipImage || data.payment_slip_image,
     ].filter(Boolean);
-
     filesToCleanup.forEach((filePath) => {
       const fullPath = `src/${filePath}`;
       if (fs.existsSync(fullPath)) {
@@ -39,7 +82,6 @@ async function createCheckIn(data) {
         });
       }
     });
-
     return buildResponse(null, `createCheckIn error: ${err.message}`, 500);
   }
 }

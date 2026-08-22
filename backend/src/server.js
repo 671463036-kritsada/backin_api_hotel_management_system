@@ -13,6 +13,7 @@ const bookingsRoutes = require("./routes/bookings_routes");
 const checkinRoutes = require("./routes/checkin_routes");
 const houskeeperRoutes = require("./routes/houskeeper_routes");
 const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
+const promotionRoutes = require("./routes/promotion_routes");
 
 
 const authRoutes = require("./routes/auth_routes");
@@ -57,6 +58,7 @@ app.use("/api/housekeeper", houskeeperRoutes);
 app.use("/api/housekeeper/issues", houskeeperIssuesRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes); 
+app.use("/api/promotions", promotionRoutes);
 
 // Debug: list mounted routes (useful when route not found)
 app.get("/__debug/routes", (req, res) => {

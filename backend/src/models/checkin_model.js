@@ -3,12 +3,16 @@ const db = require("../config/db");
 async function createCheckIn(data) {
   const sql = `
     INSERT INTO checkins (
-      booking_id, id_card_number, full_name, gender, address,
+      booking_id, user_promotion_id, discount_amount, amount_paid,
+      id_card_number, full_name, gender, address,
       id_card_image, signature_image, actual_checkin, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 'checked_in', NOW())
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'checked_in', NOW())
   `;
   const values = [
     data.bookingId || data.booking_id || null,
+    data.userPromotionId || data.user_promotion_id || null,
+    data.discountAmount || data.discount_amount || 0,
+    data.amountPaid || data.amount_paid || 0,
     data.idCardNumber || data.id_card_number || null,
     data.fullName || data.full_name || null,
     data.gender || null,

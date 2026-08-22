@@ -8,7 +8,7 @@ function buildResponse(data, message = "success", statusCode = 200) {
 exports.getRooms = async () => {
   try {
     const [rows] = await db.query(
-      `SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, status, image_url AS imageUrl, created_at AS createdAt FROM rooms`,
+      `SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, image_url AS imageUrl, created_at AS createdAt FROM rooms`,
     );
     return buildResponse(rows);
   } catch (err) {

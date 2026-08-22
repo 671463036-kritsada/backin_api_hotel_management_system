@@ -1,28 +1,16 @@
 const checkinService = require("../services/checkin_service");
 
-exports.updateRoomStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
-    const result = await roomService.updateRoomStatus(req.params.id, status);
-    res.status(result.statusCode || 200).json(result);
-  } catch (error) {
-    res.status(500).json({
-      message: "updateRoomStatus failed",
-      error: error.message,
-    });
-  }
-};
-
 exports.createCheckIn = async (req, res) => {
   try {
+    const userId = req.user.id;
+
     console.log(
       "createCheckIn headers:",
       req.headers && req.headers["content-type"],
     );
     console.log("createCheckIn body:", req.body);
-    console.log("createCheckIn files:", req.files); // debug ดูว่า multer ส่งไฟล์มาถูกไหม
+    console.log("createCheckIn files:", req.files);
 
-    // ดึง path ของไฟล์ที่ multer บันทึกไว้แล้ว
     const idCardImagePath = req.files?.idCardImage?.[0]
       ? `uploads/checkins/${req.files.idCardImage[0].filename}`
       : null;
@@ -36,7 +24,7 @@ exports.createCheckIn = async (req, res) => {
       paymentSlipImage: paymentSlipImagePath,
     };
 
-    const result = await checkinService.createCheckIn(data);
+    const result = await checkinService.createCheckIn(data, userId);
     res.status(result.statusCode || 201).json(result);
   } catch (error) {
     res.status(500).json({
