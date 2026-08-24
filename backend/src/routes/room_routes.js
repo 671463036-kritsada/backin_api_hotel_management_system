@@ -8,7 +8,6 @@ const router = express.Router();
 router.get("/", roomController.getRooms);
 router.get("/available", roomController.getAvailableRooms);
 router.get("/:id", roomController.getRoomById);
-router.patch("/:id/status", roomController.updateRoomStatus);
 
 // Admin only - ต้อง login และเป็น admin เท่านั้น
 router.post("/", authMiddleware, isAdmin, roomController.createRoom);
