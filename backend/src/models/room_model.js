@@ -19,7 +19,7 @@ exports.getRooms = async () => {
 exports.getRoomById = async (id) => {
   try {
     const [rows] = await db.query(
-      `SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, status, image_url AS imageUrl, created_at AS createdAt FROM rooms WHERE id = ?`,
+      `SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, image_url AS imageUrl, created_at AS createdAt FROM rooms WHERE id = ?`,
       [id],
     );
     if (!rows.length) return buildResponse(null, "room not found", 404);
@@ -32,7 +32,7 @@ exports.getRoomById = async (id) => {
 exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
   try {
     let sql = `
-      SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, status, image_url AS imageUrl, created_at AS createdAt
+      SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, image_url AS imageUrl, created_at AS createdAt
       FROM rooms r
       WHERE r.id NOT IN (
         SELECT b.room_id
@@ -109,7 +109,7 @@ exports.createRoom = async (data) => {
     }
 
     const [result] = await db.execute(
-      `INSERT INTO rooms (id, room_type, name, description, price, status, image_url, created_at)
+      `INSERT INTO rooms (id, room_type, name, description, price, image_url, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         id,
@@ -117,7 +117,6 @@ exports.createRoom = async (data) => {
         data.name || data.roomName || null,
         data.description || null,
         data.pricePerNight || data.price || 0,
-        data.status || "ว่าง",
         imageUrl,
       ],
     );
@@ -128,17 +127,17 @@ exports.createRoom = async (data) => {
   }
 };
 
-exports.updateRoomStatus = async (id, status) => {
+exports.updateRoomStatus = async (id,) => {
   try {
     const [result] = await db.execute(
-      `UPDATE rooms SET status = ?, updated_at = NOW() WHERE id = ?`,
-      [status, id],
+      `UPDATE rooms updated_at = NOW() WHERE id = ?`,
+      [id],
     );
     if (result.affectedRows === 0)
       return buildResponse(null, "room not found", 404);
 
     const roomResp = await exports.getRoomById(id);
-    return buildResponse(roomResp.data, "room status updated", 200);
+    return buildResponse(roomResp.data, "room updated", 200);
   } catch (err) {
     return buildResponse(null, `updateRoomStatus error: ${err.message}`, 500);
   }
@@ -165,10 +164,7 @@ exports.updateRoom = async (id, data) => {
       fields.push("price = ?");
       params.push(data.pricePerNight || data.price);
     }
-    if (data.status) {
-      fields.push("status = ?");
-      params.push(data.status);
-    }
+ 
     if (data.imageUrls || data.imageUrl) {
       const imageUrl =
         (Array.isArray(data.imageUrls) && data.imageUrls[0]) || data.imageUrl;
