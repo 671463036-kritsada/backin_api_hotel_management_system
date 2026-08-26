@@ -52,9 +52,8 @@ async function createCheckIn(data, userId) {
 
     await bookingModel.updateCheckInStatus(bookingId, data);
 
-    if (data.paymentSlipImage || data.payment_slip_image) {
+    if (data.paymentStatus || data.payment_status) {
       await bookingModel.updateBooking(bookingId, {
-        slip_url: data.paymentSlipImage || data.payment_slip_image,
         payment_status: data.paymentStatus || data.payment_status || "PAID",
       });
     }
@@ -86,9 +85,40 @@ async function createCheckIn(data, userId) {
   }
 }
 
+async function getPendingCheckins() {
+  const data = await checkinModel.getPendingCheckins();
+  return buildResponse(data);
+}
+
+async function approveCheckin(id) {
+  const checkin = await checkinModel.getCheckInById(id);
+  if (!checkin) return buildResponse(null, "ไม่พบรายการเช็คอิน", 404);
+
+  await checkinModel.updateCheckinStatus(id, "checked_in");
+  // ยืนยัน checkin แล้ว → ทำให้ booking ที่เกี่ยวข้องเป็น CHECKED_IN จริง
+  if (checkin.booking_id) {
+    await bookingModel.updateCheckInStatus(checkin.booking_id, {});
+  }
+
+  const updated = await checkinModel.getCheckInById(id);
+  return buildResponse(updated, "checkin approved");
+}
+
+async function rejectCheckin(id, reason) {
+  const checkin = await checkinModel.getCheckInById(id);
+  if (!checkin) return buildResponse(null, "ไม่พบรายการเช็คอิน", 404);
+
+  await checkinModel.updateCheckinStatus(id, "rejected");
+  const updated = await checkinModel.getCheckInById(id);
+  return buildResponse(updated, "checkin rejected");
+}
+
 module.exports = {
   createCheckIn,
   getCheckIns: async () => buildResponse(await checkinModel.getCheckIns()),
+  getPendingCheckins,
+  approveCheckin,
+  rejectCheckin,
   getCheckInById: async (id) => {
     const data = await checkinModel.getCheckInById(id);
     if (!data) return buildResponse(null, "checkin not found", 404);

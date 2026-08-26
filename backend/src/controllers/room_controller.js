@@ -24,13 +24,24 @@ exports.getRoomById = async (req, res) => {
   send(res, result);
 };
 
+// exports.createRoom = async (req, res) => {
+//   const result = await roomService.createRoom(req.body);
+//   send(res, result);
+// };
+
+// exports.updateRoom = async (req, res) => {
+//   const result = await roomService.updateRoom(req.params.id, req.body);
+//   send(res, result);
+// };
+
+
 exports.createRoom = async (req, res) => {
-  const result = await roomService.createRoom(req.body);
+  const result = await roomService.createRoom(req.body, req.file); // เพิ่ม req.file
   send(res, result);
 };
 
 exports.updateRoom = async (req, res) => {
-  const result = await roomService.updateRoom(req.params.id, req.body);
+  const result = await roomService.updateRoom(req.params.id, req.body, req.file); // เพิ่ม req.file
   send(res, result);
 };
 

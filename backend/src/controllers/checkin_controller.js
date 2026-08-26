@@ -34,6 +34,34 @@ exports.createCheckIn = async (req, res) => {
   }
 };
 
+exports.getPendingCheckins = async (req, res) => {
+  try {
+    const result = await checkinService.getPendingCheckins();
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res.status(500).json({ message: "getPendingCheckins failed", error: error.message });
+  }
+};
+
+exports.approveCheckin = async (req, res) => {
+  try {
+    const result = await checkinService.approveCheckin(req.params.id);
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res.status(500).json({ message: "approveCheckin failed", error: error.message });
+  }
+};
+
+exports.rejectCheckin = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const result = await checkinService.rejectCheckin(req.params.id, reason);
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res.status(500).json({ message: "rejectCheckin failed", error: error.message });
+  }
+};
+
 exports.getCheckIns = async (req, res) => {
   try {
     const result = await checkinService.getCheckIns();

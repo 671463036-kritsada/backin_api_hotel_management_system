@@ -16,12 +16,21 @@ async function getRooms() {
 async function getRoomById(id) {
   return roomModel.getRoomById(id);
 }
-async function createRoom(data) {
-  return roomModel.createRoom(data);
+
+async function createRoom(data, file) {
+  return roomModel.createRoom(data, file);
 }
-async function updateRoom(id, data) {
-  return roomModel.updateRoom(id, data);
+
+async function updateRoom(id, data, file) {
+  return roomModel.updateRoom(id, data, file);
 }
+
+// async function createRoom(data) {
+//   return roomModel.createRoom(data);
+// }
+// async function updateRoom(id, data) {
+//   return roomModel.updateRoom(id, data);
+// }
 async function deleteRoom(id) {
   return roomModel.deleteRoom(id);
 }

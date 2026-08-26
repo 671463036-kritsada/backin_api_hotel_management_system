@@ -1,6 +1,14 @@
 const db = require("../config/db");
 const { generateBookingId } = require("../utils/id_generator");
 
+
+async function getPendingBookings() {
+  const sql = `SELECT * FROM bookings WHERE status = 'PENDING' ORDER BY created_at DESC`;
+  const [rows] = await db.query(sql);
+  return rows;
+}
+
+
 async function createBooking(data) {
   const year = new Date().getFullYear();
   const prefix = `BK-${year}%`;
@@ -208,6 +216,7 @@ module.exports = {
   getBookings,
   getBookingById,
   getBookingsByUserId,
+  getPendingBookings,
   updateBooking,
   deleteBooking,
   updateCheckInStatus,

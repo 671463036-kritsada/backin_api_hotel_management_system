@@ -1,5 +1,43 @@
 const db = require("../config/db");
 const { generateRoomId } = require("../utils/id_generator");
+const fs = require("fs");
+const path = require("path");
+
+// โฟลเดอร์ปลายทางของรูป (ต้องตรงกับที่ server.js เปิด static ไว้: uploads/imageData/...)
+const UPLOAD_BASE = path.join(__dirname, "..", "uploads", "imageData");
+
+function getSubfolder(roomType) {
+  return roomType === "house" ? "housesImage" : "roomsImage";
+}
+
+// เซฟรูปจาก buffer ลง disk แล้วคืนค่า relative path ที่จะเก็บใน DB
+function saveRoomImage(file, roomType) {
+  const subfolder = getSubfolder(roomType);
+  const dir = path.join(UPLOAD_BASE, subfolder);
+
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const ext = path.extname(file.originalname).toLowerCase();
+  const filename = `${subfolder}_${Date.now()}${ext}`;
+  const fullPath = path.join(dir, filename);
+
+  fs.writeFileSync(fullPath, file.buffer);
+
+  // relative path ที่เก็บใน DB (ตรงกับที่ server.js expose ผ่าน /api/uploads/imageData/...)
+  return `imageData/${subfolder}/${filename}`;
+}
+
+// ลบรูปเก่าออกจาก disk (ลบเฉพาะรูปที่เป็นไฟล์ในระบบเราเอง ไม่ใช่ URL ภายนอก)
+function deleteRoomImage(relativePath) {
+  if (!relativePath || !relativePath.startsWith("imageData/")) return;
+
+  const fullPath = path.join(__dirname, "..", "uploads", relativePath);
+  fs.unlink(fullPath, (err) => {
+    if (err && err.code !== "ENOENT") {
+      console.error("deleteRoomImage error:", err.message);
+    }
+  });
+}
 
 function buildResponse(data, message = "success", statusCode = 200) {
   return {
@@ -30,10 +68,10 @@ exports.getRooms = async () => {
         END AS status
       FROM rooms r
       LEFT JOIN bookings b
-        ON b.room_id = r.id
-        AND b.status != 'ยกเลิก'
-        AND b.check_in <= CURDATE()
-        AND b.check_out > CURDATE()
+  ON b.room_id = r.id
+  AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+  AND b.check_in <= CURDATE()
+  AND b.check_out > CURDATE()
       GROUP BY r.id
       ORDER BY r.id ASC
     `);
@@ -67,14 +105,14 @@ exports.getRoomById = async (id) => {
         END AS status
       FROM rooms r
       LEFT JOIN bookings b
-        ON b.room_id = r.id
-        AND b.status != 'ยกเลิก'
-        AND b.check_in <= CURDATE()
-        AND b.check_out > CURDATE()
+  ON b.room_id = r.id
+  AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+  AND b.check_in <= CURDATE()
+  AND b.check_out > CURDATE()
       WHERE r.id = ?
       GROUP BY r.id
       `,
-      [id]
+      [id],
     );
 
     if (!rows.length) {
@@ -91,11 +129,7 @@ exports.getRoomById = async (id) => {
 // ==========================================
 // GET AVAILABLE ROOMS
 // ==========================================
-exports.getAvailableRooms = async ({
-  checkIn,
-  checkOut,
-  roomType,
-}) => {
+exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
   try {
     let sql = `
       SELECT
@@ -113,7 +147,7 @@ exports.getAvailableRooms = async ({
         SELECT b.room_id
         FROM bookings b
         WHERE b.room_id IS NOT NULL
-          AND b.status NOT IN ('ยกเลิก')
+          AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
           AND b.check_in < ?
           AND b.check_out > ?
       )
@@ -133,32 +167,24 @@ exports.getAvailableRooms = async ({
     return buildResponse(rows);
   } catch (err) {
     console.error("getAvailableRooms error:", err);
-    return buildResponse(
-      null,
-      `getAvailableRooms error: ${err.message}`,
-      500
-    );
+    return buildResponse(null, `getAvailableRooms error: ${err.message}`, 500);
   }
 };
 
 // ==========================================
 // CHECK ROOM AVAILABLE
 // ==========================================
-exports.isRoomAvailable = async (
-  roomId,
-  checkIn,
-  checkOut
-) => {
+exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
   const [rows] = await db.query(
     `
-    SELECT COUNT(*) AS count
+     SELECT COUNT(*) AS count
     FROM bookings
     WHERE room_id = ?
-      AND status NOT IN ('ยกเลิก', 'REJECTED')
+      AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT')
       AND check_in < ?
       AND check_out > ?
     `,
-    [roomId, checkOut, checkIn]
+    [roomId, checkOut, checkIn],
   );
 
   return rows[0].count === 0;
@@ -178,7 +204,7 @@ async function getNextSeq(roomType) {
     ORDER BY CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC
     LIMIT 1
     `,
-    [`^${prefix}[0-9]+$`]
+    [`^${prefix}[0-9]+$`],
   );
 
   if (rows.length === 0) {
@@ -191,184 +217,115 @@ async function getNextSeq(roomType) {
 // ==========================================
 // CREATE ROOM
 // ==========================================
-exports.createRoom = async (data) => {
+exports.createRoom = async (data, file) => {
   try {
     const roomType = data.roomType || data.room_type || "rooms";
-    const normalizedType =
-      roomType === "house" ? "house" : "room";
+    const normalizedType = roomType === "house" ? "house" : "room";
 
     const name = data.name || data.roomName || null;
     const description = data.description ?? null;
-    const price = Number(
-      data.pricePerNight ?? data.price ?? 0
-    );
-
-    const imageUrl =
-      (Array.isArray(data.imageUrls) && data.imageUrls[0]) ||
-      data.imageUrl ||
-      null;
+    const price = Number(data.pricePerNight ?? data.price ?? 0);
 
     if (!name || !String(name).trim()) {
-      return buildResponse(
-        null,
-        "room name is required",
-        400
-      );
+      return buildResponse(null, "room name is required", 400);
     }
-
     if (!price || price <= 0) {
-      return buildResponse(
-        null,
-        "price must be greater than 0",
-        400
-      );
+      return buildResponse(null, "price must be greater than 0", 400);
     }
 
     let id = data.id;
-
     if (!id) {
       const seq = await getNextSeq(normalizedType);
       id = generateRoomId(normalizedType, seq);
     }
 
+    // เซฟรูปจริงลง uploads แทนการรับ imageUrl ตรงๆ
+    let imageUrl = null;
+    if (file) {
+      imageUrl = saveRoomImage(file, roomType);
+    } else if (data.imageUrl) {
+      imageUrl = data.imageUrl; // fallback เผื่อไม่มีไฟล์ (เช่น placeholder)
+    }
+
     await db.execute(
       `
-      INSERT INTO rooms (
-        id,
-        room_type,
-        name,
-        description,
-        price,
-        image_url
-      )
+      INSERT INTO rooms (id, room_type, name, description, price, image_url)
       VALUES (?, ?, ?, ?, ?, ?)
       `,
-      [
-        id,
-        roomType,
-        name,
-        description,
-        price,
-        imageUrl,
-      ]
+      [id, roomType, name, description, price, imageUrl],
     );
 
     const roomResp = await exports.getRoomById(id);
-
-    return buildResponse(
-      roomResp.data,
-      "room created",
-      201
-    );
+    return buildResponse(roomResp.data, "room created", 201);
   } catch (err) {
     console.error("createRoom error:", err);
-    return buildResponse(
-      null,
-      `createRoom error: ${err.message}`,
-      500
-    );
+    return buildResponse(null, `createRoom error: ${err.message}`, 500);
   }
 };
 
 // ==========================================
 // UPDATE ROOM
 // ==========================================
-exports.updateRoom = async (id, data) => {
+exports.updateRoom = async (id, data, file) => {
   try {
     const fields = [];
     const params = [];
 
-    // ใช้ !== undefined เพื่อให้สามารถแก้เป็นค่าว่างได้
     if (data.roomType !== undefined || data.room_type !== undefined) {
       fields.push("room_type = ?");
       params.push(data.roomType ?? data.room_type);
     }
-
     if (data.name !== undefined || data.roomName !== undefined) {
       fields.push("name = ?");
       params.push(data.name ?? data.roomName);
     }
-
     if (data.description !== undefined) {
       fields.push("description = ?");
       params.push(data.description);
     }
-
-    if (
-      data.pricePerNight !== undefined ||
-      data.price !== undefined
-    ) {
-      const price = Number(
-        data.pricePerNight ?? data.price
-      );
-
+    if (data.pricePerNight !== undefined || data.price !== undefined) {
+      const price = Number(data.pricePerNight ?? data.price);
       if (!price || price <= 0) {
-        return buildResponse(
-          null,
-          "price must be greater than 0",
-          400
-        );
+        return buildResponse(null, "price must be greater than 0", 400);
       }
-
       fields.push("price = ?");
       params.push(price);
     }
 
-    if (
-      data.imageUrl !== undefined ||
-      data.imageUrls !== undefined
-    ) {
-      const imageUrl =
-        (Array.isArray(data.imageUrls) &&
-          data.imageUrls[0]) ??
-        data.imageUrl ??
-        null;
+    // ถ้ามีการอัปโหลดรูปใหม่ -> ลบรูปเก่า แล้วเซฟรูปใหม่แทน
+    if (file) {
+      const currentResp = await exports.getRoomById(id);
+      if (!currentResp.data) {
+        return buildResponse(null, "room not found", 404);
+      }
+
+      const roomType =
+        data.roomType ?? data.room_type ?? currentResp.data.roomType;
+      const newImageUrl = saveRoomImage(file, roomType);
+
+      deleteRoomImage(currentResp.data.imageUrl); // ลบรูปเก่าทิ้ง
 
       fields.push("image_url = ?");
-      params.push(imageUrl);
+      params.push(newImageUrl);
     }
 
     if (fields.length === 0) {
-      return buildResponse(
-        null,
-        "no fields to update",
-        400
-      );
+      return buildResponse(null, "no fields to update", 400);
     }
 
     params.push(id);
-
-    const sql = `
-      UPDATE rooms
-      SET ${fields.join(", ")}
-      WHERE id = ?
-    `;
-
+    const sql = `UPDATE rooms SET ${fields.join(", ")} WHERE id = ?`;
     const [result] = await db.execute(sql, params);
 
     if (result.affectedRows === 0) {
-      return buildResponse(
-        null,
-        "room not found",
-        404
-      );
+      return buildResponse(null, "room not found", 404);
     }
 
     const roomResp = await exports.getRoomById(id);
-
-    return buildResponse(
-      roomResp.data,
-      "room updated",
-      200
-    );
+    return buildResponse(roomResp.data, "room updated", 200);
   } catch (err) {
     console.error("updateRoom error:", err);
-
-    return buildResponse(
-      null,
-      `updateRoom error: ${err.message}`,
-      500
-    );
+    return buildResponse(null, `updateRoom error: ${err.message}`, 500);
   }
 };
 
@@ -377,43 +334,29 @@ exports.updateRoom = async (id, data) => {
 // ==========================================
 exports.deleteRoom = async (id) => {
   try {
-    const [result] = await db.execute(
-      `DELETE FROM rooms WHERE id = ?`,
-      [id]
-    );
-
-    if (result.affectedRows === 0) {
-      return buildResponse(
-        null,
-        "room not found",
-        404
-      );
+    const currentResp = await exports.getRoomById(id);
+    if (!currentResp.data) {
+      return buildResponse(null, "room not found", 404);
     }
 
-    return buildResponse(
-      { id },
-      "room deleted",
-      200
-    );
+    const [result] = await db.execute(`DELETE FROM rooms WHERE id = ?`, [id]);
+
+    if (result.affectedRows === 0) {
+      return buildResponse(null, "room not found", 404);
+    }
+
+    deleteRoomImage(currentResp.data.imageUrl); // ลบรูปออกจาก disk ด้วย
+
+    return buildResponse({ id }, "room deleted", 200);
   } catch (err) {
     console.error("deleteRoom error:", err);
-
-    return buildResponse(
-      null,
-      `deleteRoom error: ${err.message}`,
-      500
-    );
+    return buildResponse(null, `deleteRoom error: ${err.message}`, 500);
   }
 };
 
 exports.buildResponse = buildResponse;
 
-
-
-
-
-
-//version เก่า 
+//version เก่า
 
 // const db = require("../config/db");
 // const { generateRoomId } = require("../utils/id_generator");
@@ -497,9 +440,9 @@ exports.buildResponse = buildResponse;
 // async function getNextSeq(roomType) {
 //   const prefix = roomType === "house" ? "H" : "R";
 //   const [rows] = await db.execute(
-//     `SELECT id FROM rooms 
+//     `SELECT id FROM rooms
 //      WHERE id REGEXP BINARY ?
-//      ORDER BY CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC 
+//      ORDER BY CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC
 //      LIMIT 1`,
 //     [`^${prefix}[0-9]+$`],
 //   );
@@ -581,7 +524,7 @@ exports.buildResponse = buildResponse;
 //       fields.push("price = ?");
 //       params.push(data.pricePerNight || data.price);
 //     }
- 
+
 //     if (data.imageUrls || data.imageUrl) {
 //       const imageUrl =
 //         (Array.isArray(data.imageUrls) && data.imageUrls[0]) || data.imageUrl;
