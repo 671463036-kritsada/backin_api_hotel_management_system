@@ -14,14 +14,14 @@ router.post(
   "/",
   authMiddleware,
   isAdmin,
-  uploadRoomImage.single("image"), // เพิ่ม: field name ต้องชื่อ "image"
+  uploadRoomImage.array("images", 10), // รับได้สูงสุด 10 รูป, field name เปลี่ยนเป็น "images"
   roomController.createRoom,
 );
 router.put(
   "/:id",
   authMiddleware,
   isAdmin,
-  uploadRoomImage.single("image"), // เพิ่ม
+  uploadRoomImage.array("images", 10), 
   roomController.updateRoom,
 );
 router.delete("/:id", authMiddleware, isAdmin, roomController.deleteRoom);

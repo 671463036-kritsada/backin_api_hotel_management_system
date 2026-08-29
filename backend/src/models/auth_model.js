@@ -32,8 +32,8 @@ exports.createUser = async (data, passwordHash) => {
 
   const sql = `
     INSERT INTO users
-    (id, name, email, phone, password, role, status, address, join_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, name, email, phone, password, role, status, address, join_date ,bank)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
@@ -46,6 +46,7 @@ exports.createUser = async (data, passwordHash) => {
     "active",         // status default
     data.address || null,
     data.join_date || new Date().toISOString().slice(0, 10),
+    data.bankName || null
   ];
 
   const [result] = await db.query(sql, values);

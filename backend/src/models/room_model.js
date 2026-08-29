@@ -3,14 +3,12 @@ const { generateRoomId } = require("../utils/id_generator");
 const fs = require("fs");
 const path = require("path");
 
-// โฟลเดอร์ปลายทางของรูป (ต้องตรงกับที่ server.js เปิด static ไว้: uploads/imageData/...)
 const UPLOAD_BASE = path.join(__dirname, "..", "uploads", "imageData");
 
 function getSubfolder(roomType) {
   return roomType === "house" ? "housesImage" : "roomsImage";
 }
 
-// เซฟรูปจาก buffer ลง disk แล้วคืนค่า relative path ที่จะเก็บใน DB
 function saveRoomImage(file, roomType) {
   const subfolder = getSubfolder(roomType);
   const dir = path.join(UPLOAD_BASE, subfolder);
@@ -18,16 +16,20 @@ function saveRoomImage(file, roomType) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const ext = path.extname(file.originalname).toLowerCase();
-  const filename = `${subfolder}_${Date.now()}${ext}`;
+  const filename = `${subfolder}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
   const fullPath = path.join(dir, filename);
 
   fs.writeFileSync(fullPath, file.buffer);
 
-  // relative path ที่เก็บใน DB (ตรงกับที่ server.js expose ผ่าน /api/uploads/imageData/...)
   return `imageData/${subfolder}/${filename}`;
 }
 
-// ลบรูปเก่าออกจาก disk (ลบเฉพาะรูปที่เป็นไฟล์ในระบบเราเอง ไม่ใช่ URL ภายนอก)
+// เซฟหลายไฟล์พร้อมกัน คืนค่าเป็น array ของ relative path
+function saveRoomImages(files, roomType) {
+  if (!files || files.length === 0) return [];
+  return files.map((file) => saveRoomImage(file, roomType));
+}
+
 function deleteRoomImage(relativePath) {
   if (!relativePath || !relativePath.startsWith("imageData/")) return;
 
@@ -39,11 +41,35 @@ function deleteRoomImage(relativePath) {
   });
 }
 
+// ลบรูปทั้งหมดของห้อง (ทั้งไฟล์บน disk และ record ใน room_images)
+async function deleteAllRoomImages(roomId) {
+  const [images] = await db.query(
+    `SELECT image_url FROM room_images WHERE room_id = ?`,
+    [roomId]
+  );
+  images.forEach((img) => deleteRoomImage(img.image_url));
+  await db.execute(`DELETE FROM room_images WHERE room_id = ?`, [roomId]);
+}
+
+// insert รูปหลายรูปเข้า room_images ตามลำดับ
+async function insertRoomImages(roomId, imagePaths) {
+  for (let i = 0; i < imagePaths.length; i++) {
+    await db.execute(
+      `INSERT INTO room_images (room_id, image_url, sort_order) VALUES (?, ?, ?)`,
+      [roomId, imagePaths[i], i],
+    );
+  }
+}
+
 function buildResponse(data, message = "success", statusCode = 200) {
+  return { message, statusCode, data };
+}
+
+// แปลง imageUrls string ('||' คั่น) จาก GROUP_CONCAT ให้เป็น array จริง
+function mapImageUrls(row) {
   return {
-    message,
-    statusCode,
-    data,
+    ...row,
+    imageUrls: row.imageUrls ? row.imageUrls.split("||") : [],
   };
 }
 
@@ -59,24 +85,25 @@ exports.getRooms = async () => {
         r.name,
         r.description,
         r.price AS pricePerNight,
-        r.image_url AS imageUrl,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         CASE
           WHEN b.room_id IS NOT NULL THEN 'มีผู้พัก'
           ELSE 'ว่าง'
-        END AS status
+        END AS status,
+        GROUP_CONCAT(DISTINCT ri.image_url ORDER BY ri.sort_order SEPARATOR '||') AS imageUrls
       FROM rooms r
       LEFT JOIN bookings b
-  ON b.room_id = r.id
-  AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
-  AND b.check_in <= CURDATE()
-  AND b.check_out > CURDATE()
+        ON b.room_id = r.id
+        AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+        AND b.check_in <= CURDATE()
+        AND b.check_out > CURDATE()
+      LEFT JOIN room_images ri ON ri.room_id = r.id
       GROUP BY r.id
       ORDER BY r.id ASC
     `);
 
-    return buildResponse(rows);
+    return buildResponse(rows.map(mapImageUrls));
   } catch (err) {
     console.error("getRooms error:", err);
     return buildResponse(null, `getRooms error: ${err.message}`, 500);
@@ -96,19 +123,20 @@ exports.getRoomById = async (id) => {
         r.name,
         r.description,
         r.price AS pricePerNight,
-        r.image_url AS imageUrl,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         CASE
           WHEN b.room_id IS NOT NULL THEN 'มีผู้พัก'
           ELSE 'ว่าง'
-        END AS status
+        END AS status,
+        GROUP_CONCAT(DISTINCT ri.image_url ORDER BY ri.sort_order SEPARATOR '||') AS imageUrls
       FROM rooms r
       LEFT JOIN bookings b
-  ON b.room_id = r.id
-  AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
-  AND b.check_in <= CURDATE()
-  AND b.check_out > CURDATE()
+        ON b.room_id = r.id
+        AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+        AND b.check_in <= CURDATE()
+        AND b.check_out > CURDATE()
+      LEFT JOIN room_images ri ON ri.room_id = r.id
       WHERE r.id = ?
       GROUP BY r.id
       `,
@@ -119,7 +147,7 @@ exports.getRoomById = async (id) => {
       return buildResponse(null, "room not found", 404);
     }
 
-    return buildResponse(rows[0]);
+    return buildResponse(mapImageUrls(rows[0]));
   } catch (err) {
     console.error("getRoomById error:", err);
     return buildResponse(null, `getRoomById error: ${err.message}`, 500);
@@ -138,11 +166,12 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
         r.name,
         r.description,
         r.price AS pricePerNight,
-        r.image_url AS imageUrl,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
-        'ว่าง' AS status
+        'ว่าง' AS status,
+        GROUP_CONCAT(DISTINCT ri.image_url ORDER BY ri.sort_order SEPARATOR '||') AS imageUrls
       FROM rooms r
+      LEFT JOIN room_images ri ON ri.room_id = r.id
       WHERE r.id NOT IN (
         SELECT b.room_id
         FROM bookings b
@@ -160,11 +189,11 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
       params.push(roomType);
     }
 
-    sql += ` ORDER BY r.id ASC`;
+    sql += ` GROUP BY r.id ORDER BY r.id ASC`;
 
     const [rows] = await db.query(sql, params);
 
-    return buildResponse(rows);
+    return buildResponse(rows.map(mapImageUrls));
   } catch (err) {
     console.error("getAvailableRooms error:", err);
     return buildResponse(null, `getAvailableRooms error: ${err.message}`, 500);
@@ -217,7 +246,7 @@ async function getNextSeq(roomType) {
 // ==========================================
 // CREATE ROOM
 // ==========================================
-exports.createRoom = async (data, file) => {
+exports.createRoom = async (data, files) => {
   try {
     const roomType = data.roomType || data.room_type || "rooms";
     const normalizedType = roomType === "house" ? "house" : "room";
@@ -225,6 +254,7 @@ exports.createRoom = async (data, file) => {
     const name = data.name || data.roomName || null;
     const description = data.description ?? null;
     const price = Number(data.pricePerNight ?? data.price ?? 0);
+    const bank = data.bank ?? null ;
 
     if (!name || !String(name).trim()) {
       return buildResponse(null, "room name is required", 400);
@@ -239,21 +269,19 @@ exports.createRoom = async (data, file) => {
       id = generateRoomId(normalizedType, seq);
     }
 
-    // เซฟรูปจริงลง uploads แทนการรับ imageUrl ตรงๆ
-    let imageUrl = null;
-    if (file) {
-      imageUrl = saveRoomImage(file, roomType);
-    } else if (data.imageUrl) {
-      imageUrl = data.imageUrl; // fallback เผื่อไม่มีไฟล์ (เช่น placeholder)
-    }
-
     await db.execute(
       `
-      INSERT INTO rooms (id, room_type, name, description, price, image_url)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO rooms (id, room_type, name, description, price)
+      VALUES (?, ?, ?, ?, ?)
       `,
-      [id, roomType, name, description, price, imageUrl],
+      [id, roomType, name, description, price],
     );
+
+    // เซฟรูปหลายไฟล์ แล้ว insert เข้า room_images
+    const imagePaths = saveRoomImages(files, roomType);
+    if (imagePaths.length > 0) {
+      await insertRoomImages(id, imagePaths);
+    }
 
     const roomResp = await exports.getRoomById(id);
     return buildResponse(roomResp.data, "room created", 201);
@@ -266,7 +294,7 @@ exports.createRoom = async (data, file) => {
 // ==========================================
 // UPDATE ROOM
 // ==========================================
-exports.updateRoom = async (id, data, file) => {
+exports.updateRoom = async (id, data, files) => {
   try {
     const fields = [];
     const params = [];
@@ -292,8 +320,8 @@ exports.updateRoom = async (id, data, file) => {
       params.push(price);
     }
 
-    // ถ้ามีการอัปโหลดรูปใหม่ -> ลบรูปเก่า แล้วเซฟรูปใหม่แทน
-    if (file) {
+    // ถ้ามีการอัปโหลดรูปใหม่ -> ลบรูปเก่าทั้งชุด แล้วเซฟรูปใหม่แทน
+    if (files && files.length > 0) {
       const currentResp = await exports.getRoomById(id);
       if (!currentResp.data) {
         return buildResponse(null, "room not found", 404);
@@ -301,24 +329,25 @@ exports.updateRoom = async (id, data, file) => {
 
       const roomType =
         data.roomType ?? data.room_type ?? currentResp.data.roomType;
-      const newImageUrl = saveRoomImage(file, roomType);
 
-      deleteRoomImage(currentResp.data.imageUrl); // ลบรูปเก่าทิ้ง
+      await deleteAllRoomImages(id);
 
-      fields.push("image_url = ?");
-      params.push(newImageUrl);
+      const newImagePaths = saveRoomImages(files, roomType);
+      await insertRoomImages(id, newImagePaths);
     }
 
-    if (fields.length === 0) {
+    if (fields.length === 0 && !(files && files.length > 0)) {
       return buildResponse(null, "no fields to update", 400);
     }
 
-    params.push(id);
-    const sql = `UPDATE rooms SET ${fields.join(", ")} WHERE id = ?`;
-    const [result] = await db.execute(sql, params);
+    if (fields.length > 0) {
+      params.push(id);
+      const sql = `UPDATE rooms SET ${fields.join(", ")} WHERE id = ?`;
+      const [result] = await db.execute(sql, params);
 
-    if (result.affectedRows === 0) {
-      return buildResponse(null, "room not found", 404);
+      if (result.affectedRows === 0) {
+        return buildResponse(null, "room not found", 404);
+      }
     }
 
     const roomResp = await exports.getRoomById(id);
@@ -339,13 +368,13 @@ exports.deleteRoom = async (id) => {
       return buildResponse(null, "room not found", 404);
     }
 
+    await deleteAllRoomImages(id); // ลบรูปทั้งหมดออกจาก disk + room_images ก่อน
+
     const [result] = await db.execute(`DELETE FROM rooms WHERE id = ?`, [id]);
 
     if (result.affectedRows === 0) {
       return buildResponse(null, "room not found", 404);
     }
-
-    deleteRoomImage(currentResp.data.imageUrl); // ลบรูปออกจาก disk ด้วย
 
     return buildResponse({ id }, "room deleted", 200);
   } catch (err) {
@@ -355,207 +384,3 @@ exports.deleteRoom = async (id) => {
 };
 
 exports.buildResponse = buildResponse;
-
-//version เก่า
-
-// const db = require("../config/db");
-// const { generateRoomId } = require("../utils/id_generator");
-
-// function buildResponse(data, message = "success", statusCode = 200) {
-//   return { message, statusCode, data };
-// }
-
-// exports.getRooms = async () => {
-//   try {
-//     const [rows] = await db.query(
-//       `SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, image_url AS imageUrl, created_at AS createdAt FROM rooms`,
-//     );
-//     return buildResponse(rows);
-//   } catch (err) {
-//     return buildResponse(null, `getRooms error: ${err.message}`, 500);
-//   }
-// };
-
-// exports.getRoomById = async (id) => {
-//   try {
-//     const [rows] = await db.query(
-//       `SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, image_url AS imageUrl, created_at AS createdAt FROM rooms WHERE id = ?`,
-//       [id],
-//     );
-//     if (!rows.length) return buildResponse(null, "room not found", 404);
-//     return buildResponse(rows[0]);
-//   } catch (err) {
-//     return buildResponse(null, `getRoomById error: ${err.message}`, 500);
-//   }
-// };
-
-// exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
-//   try {
-//     let sql = `
-//       SELECT id AS roomId, room_type AS roomType, name, description, price AS pricePerNight, image_url AS imageUrl, created_at AS createdAt
-//       FROM rooms r
-//       WHERE r.id NOT IN (
-//         SELECT b.room_id
-//         FROM bookings b
-//         WHERE b.room_id IS NOT NULL
-//           AND b.status NOT IN ('ยกเลิก')
-//           AND b.check_in < ?
-//           AND b.check_out > ?
-//       )
-//     `;
-
-//     const params = [checkOut, checkIn];
-
-//     if (roomType) {
-//       sql += ` AND r.room_type = ?`;
-//       params.push(roomType);
-//     }
-
-//     sql += ` ORDER BY r.id ASC`;
-
-//     const [rows] = await db.query(sql, params);
-//     return buildResponse(rows);
-//   } catch (err) {
-//     return buildResponse(null, `getAvailableRooms error: ${err.message}`, 500);
-//   }
-// };
-
-// // เช็คว่าห้องนี้ว่างในช่วงวันที่ที่ระบุไหม (ใช้ก่อนสร้าง booking เพื่อป้องกันการจองซ้ำ)
-// exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
-//   const [rows] = await db.query(
-//     `
-//     SELECT COUNT(*) AS count
-//     FROM bookings
-//     WHERE room_id = ?
-//       AND status NOT IN ('ยกเลิก', 'REJECTED')
-//       AND check_in < ?
-//       AND check_out > ?
-//     `,
-//     [roomId, checkOut, checkIn],
-//   );
-//   return rows[0].count === 0;
-// };
-
-// // หาลำดับถัดไปของแต่ละประเภทห้อง โดยนับจากจำนวนห้องที่มี prefix เดียวกันอยู่แล้ว
-// async function getNextSeq(roomType) {
-//   const prefix = roomType === "house" ? "H" : "R";
-//   const [rows] = await db.execute(
-//     `SELECT id FROM rooms
-//      WHERE id REGEXP BINARY ?
-//      ORDER BY CAST(SUBSTRING(id, 2) AS UNSIGNED) DESC
-//      LIMIT 1`,
-//     [`^${prefix}[0-9]+$`],
-//   );
-//   if (rows.length === 0) return 1;
-//   const lastId = rows[0].id;
-//   const lastSeq = parseInt(lastId.slice(1), 10);
-//   return lastSeq + 1;
-// }
-
-// exports.createRoom = async (data) => {
-//   try {
-//     const imageUrl =
-//       (Array.isArray(data.imageUrls) && data.imageUrls[0]) ||
-//       data.imageUrl ||
-//       null;
-
-//     const roomType = data.roomType || data.room_type || "rooms";
-//     const normalizedType = roomType === "house" ? "house" : "room";
-
-//     let id = data.id;
-//     if (!id) {
-//       const seq = await getNextSeq(normalizedType);
-//       id = generateRoomId(normalizedType, seq);
-//     }
-
-//     const [result] = await db.execute(
-//       `INSERT INTO rooms (id, room_type, name, description, price, image_url, created_at)
-//        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-//       [
-//         id,
-//         roomType,
-//         data.name || data.roomName || null,
-//         data.description || null,
-//         data.pricePerNight || data.price || 0,
-//         imageUrl,
-//       ],
-//     );
-//     const roomResp = await exports.getRoomById(id);
-//     return buildResponse(roomResp.data, "room created", 201);
-//   } catch (err) {
-//     return buildResponse(null, `createRoom error: ${err.message}`, 500);
-//   }
-// };
-
-// exports.updateRoomStatus = async (id,) => {
-//   try {
-//     const [result] = await db.execute(
-//       `UPDATE rooms updated_at = NOW() WHERE id = ?`,
-//       [id],
-//     );
-//     if (result.affectedRows === 0)
-//       return buildResponse(null, "room not found", 404);
-
-//     const roomResp = await exports.getRoomById(id);
-//     return buildResponse(roomResp.data, "room updated", 200);
-//   } catch (err) {
-//     return buildResponse(null, `updateRoomStatus error: ${err.message}`, 500);
-//   }
-// };
-
-// exports.updateRoom = async (id, data) => {
-//   try {
-//     const fields = [];
-//     const params = [];
-
-//     if (data.roomType || data.room_type) {
-//       fields.push("room_type = ?");
-//       params.push(data.roomType || data.room_type);
-//     }
-//     if (data.name || data.roomName) {
-//       fields.push("name = ?");
-//       params.push(data.name || data.roomName);
-//     }
-//     if (data.description) {
-//       fields.push("description = ?");
-//       params.push(data.description);
-//     }
-//     if (data.pricePerNight || data.price) {
-//       fields.push("price = ?");
-//       params.push(data.pricePerNight || data.price);
-//     }
-
-//     if (data.imageUrls || data.imageUrl) {
-//       const imageUrl =
-//         (Array.isArray(data.imageUrls) && data.imageUrls[0]) || data.imageUrl;
-//       fields.push("image_url = ?");
-//       params.push(imageUrl || null);
-//     }
-
-//     if (fields.length === 0) {
-//       return buildResponse(null, "no fields to update", 400);
-//     }
-
-//     params.push(id);
-//     const sql = `UPDATE rooms SET ${fields.join(", ")}, created_at = NOW() WHERE id = ?`;
-//     await db.execute(sql, params);
-
-//     const roomResp = await exports.getRoomById(id);
-//     return buildResponse(roomResp.data, "room updated", 200);
-//   } catch (err) {
-//     return buildResponse(null, `updateRoom error: ${err.message}`, 500);
-//   }
-// };
-
-// exports.deleteRoom = async (id) => {
-//   try {
-//     const [result] = await db.execute(`DELETE FROM rooms WHERE id = ?`, [id]);
-//     if (result.affectedRows === 0)
-//       return buildResponse(null, "room not found", 404);
-//     return buildResponse({ id }, "room deleted", 200);
-//   } catch (err) {
-//     return buildResponse(null, `deleteRoom error: ${err.message}`, 500);
-//   }
-// };
-
-// exports.buildResponse = buildResponse;

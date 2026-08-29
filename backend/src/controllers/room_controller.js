@@ -24,109 +24,26 @@ exports.getRoomById = async (req, res) => {
   send(res, result);
 };
 
+exports.createRoom = async (req, res) => {
+  const result = await roomService.createRoom(req.body, req.files); // แก้: req.files
+  send(res, result);
+};
+exports.updateRoom = async (req, res) => {
+  const result = await roomService.updateRoom(req.params.id, req.body, req.files); // แก้
+  send(res, result);
+};
+
 // exports.createRoom = async (req, res) => {
-//   const result = await roomService.createRoom(req.body);
+//   const result = await roomService.createRoom(req.body, req.file); // เพิ่ม req.file
 //   send(res, result);
 // };
 
 // exports.updateRoom = async (req, res) => {
-//   const result = await roomService.updateRoom(req.params.id, req.body);
+//   const result = await roomService.updateRoom(req.params.id, req.body, req.file); // เพิ่ม req.file
 //   send(res, result);
 // };
-
-
-exports.createRoom = async (req, res) => {
-  const result = await roomService.createRoom(req.body, req.file); // เพิ่ม req.file
-  send(res, result);
-};
-
-exports.updateRoom = async (req, res) => {
-  const result = await roomService.updateRoom(req.params.id, req.body, req.file); // เพิ่ม req.file
-  send(res, result);
-};
 
 exports.deleteRoom = async (req, res) => {
   const result = await roomService.deleteRoom(req.params.id);
   send(res, result);
 };
-
-
-
-// const roomService = require("../services/room_service");
-
-// exports.getAvailableRooms = async (req, res) => {
-//   try {
-//     const { checkIn, checkOut, roomType } = req.query;
-//     const result = await roomService.getAvailableRooms({
-//       checkIn,
-//       checkOut,
-//       roomType,
-//     });
-//     res.status(result.statusCode || 200).json(result);
-//   } catch (error) {
-//     res
-//       .status(500)
-//       .json({ message: "getAvailableRooms failed", error: error.message });
-//   }
-// };
-
-// exports.getRooms = async (req, res) => {
-//   try {
-//     const result = await roomService.getRooms();
-//     res.status(200).json(result);
-//   } catch (error) {
-//     res.status(500).json({
-//       message: "getRooms failed",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// exports.getRoomById = async (req, res) => {
-//   try {
-//     const result = await roomService.getRoomById(req.params.id);
-//     res.status(result.statusCode || 200).json(result);
-//   } catch (error) {
-//     res.status(500).json({
-//       message: "getRoomById failed",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// exports.createRoom = async (req, res) => {
-//   try {
-//     const result = await roomService.createRoom(req.body);
-//     res.status(result.statusCode || 201).json(result);
-//   } catch (error) {
-//     res.status(500).json({
-//       message: "createRoom failed",
-//       error: error.message,
-//     });
-//   }
-// };
-
-
-// exports.updateRoom = async (req, res) => {
-//   try {
-//     const result = await roomService.updateRoom(req.params.id, req.body);
-//     res.status(result.statusCode || 200).json(result);
-//   } catch (error) {
-//     res.status(500).json({
-//       message: "updateRoom failed",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// exports.deleteRoom = async (req, res) => {
-//   try {
-//     const result = await roomService.deleteRoom(req.params.id);
-//     res.status(result.statusCode || 200).json(result);
-//   } catch (error) {
-//     res.status(500).json({
-//       message: "deleteRoom failed",
-//       error: error.message,
-//     });
-//   }
-// };
