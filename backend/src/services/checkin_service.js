@@ -3,6 +3,8 @@ const checkinModel = require("../models/checkin_model");
 const bookingModel = require("../models/booking_model");
 const promotionService = require("../services/promotion_service");
 
+const { generateRoomKey } = require("../utils/room_key_generator");
+
 function buildResponse(data, message = "success", statusCode = 200) {
   return { message, statusCode, data };
 }
@@ -50,7 +52,7 @@ async function createCheckIn(data, userId) {
 
     const result = await checkinModel.createCheckIn(checkinData);
 
-    await bookingModel.updateCheckInStatus(bookingId, data);
+    // await bookingModel.updateCheckInStatus(bookingId, data);
 
     if (data.paymentStatus || data.payment_status) {
       await bookingModel.updateBooking(bookingId, {
@@ -94,10 +96,12 @@ async function approveCheckin(id) {
   const checkin = await checkinModel.getCheckInById(id);
   if (!checkin) return buildResponse(null, "ไม่พบรายการเช็คอิน", 404);
 
+  const roomKey = generateRoomKey();
+
   await checkinModel.updateCheckinStatus(id, "checked_in");
-  // ยืนยัน checkin แล้ว → ทำให้ booking ที่เกี่ยวข้องเป็น CHECKED_IN จริง
+
   if (checkin.booking_id) {
-    await bookingModel.updateCheckInStatus(checkin.booking_id, {});
+    await bookingModel.updateCheckInStatus(checkin.booking_id, { room_key: roomKey });
   }
 
   const updated = await checkinModel.getCheckInById(id);

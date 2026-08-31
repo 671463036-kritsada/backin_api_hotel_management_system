@@ -3,6 +3,9 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+//ตั้งเวลา
+const cron = require("node-cron");
+
 require("./config/db");
 
 const app = express();
@@ -15,11 +18,14 @@ const houskeeperRoutes = require("./routes/houskeeper_routes");
 const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
 const promotionRoutes = require("./routes/promotion_routes");
 
+const {
+  autoCheckoutExpiredBookings,
+} = require("./services/auto_checkout_service");
 
 const authRoutes = require("./routes/auth_routes");
 const userRoutes = require("./routes/user_routes");
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/uploads", express.static(path.join(__dirname, "./uploads")));
 
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
@@ -57,7 +63,7 @@ app.use("/api/checkin", checkinRoutes);
 app.use("/api/housekeeper", houskeeperRoutes);
 app.use("/api/housekeeper/issues", houskeeperIssuesRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes); 
+app.use("/api/users", userRoutes);
 app.use("/api/promotions", promotionRoutes);
 
 // Debug: list mounted routes (useful when route not found)
@@ -94,4 +100,19 @@ const PORT = process.env.PORT || 2000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+
+  // Background job: เช็คทุก 30 นาที ว่ามี booking ที่ถึงเวลา checkout แล้วแต่ user ยังไม่กด
+  cron.schedule("*/30 * * * *", async () => {
+    console.log("[auto-checkout] checking for expired bookings...");
+    try {
+      const result = await autoCheckoutExpiredBookings();
+      if (result.processed > 0) {
+        console.log(
+          `[auto-checkout] auto-checked-out ${result.processed} booking(s)`,
+        );
+      }
+    } catch (err) {
+      console.error("[auto-checkout] job failed:", err.message);
+    }
+  });
 });

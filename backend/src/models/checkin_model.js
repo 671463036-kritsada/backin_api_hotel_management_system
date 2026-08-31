@@ -69,14 +69,6 @@ async function checkOutCheckin(id) {
   return result;
 }
 
-async function updateCheckinStatus(id, status) {
-  const [result] = await db.execute(
-    `UPDATE checkins SET status = ? WHERE id = ?`,
-    [status, id],
-  );
-  return result;
-}
-
 module.exports = {
   createCheckIn,
   getCheckIns,

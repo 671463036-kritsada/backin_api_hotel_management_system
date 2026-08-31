@@ -84,7 +84,13 @@ async function getBookings() {
 }
 
 async function getBookingsByUserId(userId) {
-  const sql = `SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC`;
+  const sql = `
+    SELECT b.*, c.status AS checkin_status
+    FROM bookings b
+    LEFT JOIN checkins c ON c.booking_id = b.id
+    WHERE b.user_id = ?
+    ORDER BY b.created_at DESC
+  `;
   const [rows] = await db.query(sql, [userId]);
   return rows;
 }
@@ -198,6 +204,19 @@ async function updateCheckOutStatus(id, status = "CHECKED_OUT") {
   return result;
 }
 
+
+async function getExpiredCheckedInBookings() {
+  const sql = `
+    SELECT *
+    FROM bookings
+    WHERE check_in_status = 'CHECKED_IN'
+      AND check_out_status != 'CHECKED_OUT'
+      AND TIMESTAMP(check_out, '12:00:00') <= NOW()
+  `;
+  const [rows] = await db.query(sql);
+  return rows;
+}
+
 async function updateInspectionStatus(id, status) {
   const [result] = await db.execute(
     `
@@ -221,5 +240,6 @@ module.exports = {
   deleteBooking,
   updateCheckInStatus,
   updateCheckOutStatus,
+  getExpiredCheckedInBookings,
   updateInspectionStatus,
 };
