@@ -1,4 +1,10 @@
 const db = require("../config/db");
+const fs = require("fs");
+const path = require("path");
+
+const { toMySQLDateTime } = require("../utils/date_helper");
+
+const UPLOAD_BASE = path.join(__dirname, "..", "uploads", "imageData");
 
 function buildResponse(data, message = "success", statusCode = 200) {
   return { message, statusCode, data };
@@ -130,9 +136,170 @@ async function grantPromotionToUser(userId, promotionId) {
   return { insertId: result.insertId };
 }
 
+function savePromotionImage(file) {
+  const dir = path.join(UPLOAD_BASE, "promotionsImage");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const ext = path.extname(file.originalname).toLowerCase();
+  const filename = `promotion_${Date.now()}${ext}`;
+  const fullPath = path.join(dir, filename);
+
+  fs.writeFileSync(fullPath, file.buffer);
+  return `imageData/promotionsImage/${filename}`;
+}
+
+function deletePromotionImage(relativePath) {
+  if (!relativePath || !relativePath.startsWith("imageData/")) return;
+  const fullPath = path.join(__dirname, "..", "uploads", relativePath);
+  fs.unlink(fullPath, (err) => {
+    if (err && err.code !== "ENOENT") {
+      console.error("deletePromotionImage error:", err.message);
+    }
+  });
+}
+
+function buildResponse(data, message = "success", statusCode = 200) {
+  return { message, statusCode, data };
+}
+
+// ==========================================
+// ADMIN: ดึงโปรโมชั่นทั้งหมด (รวมที่ปิด/หมดอายุ)
+// ==========================================
+async function getAllPromotionsAdmin() {
+  const [rows] = await db.query(
+    `SELECT id, code, title, description, image_url, discount_type, discount_value,
+            min_booking_amount, max_discount_amount, usage_limit, used_count,
+            start_date, end_date, is_active, created_at
+     FROM promotions
+     ORDER BY created_at DESC`,
+  );
+  return rows;
+}
+
+// ==========================================
+// CREATE
+// ==========================================
+async function createPromotion(data, file) {
+  const {
+    code,
+    title,
+    description,
+    discountType,
+    discountValue,
+    minBookingAmount,
+    maxDiscountAmount,
+    usageLimit,
+    startDate,
+    endDate,
+  } = data;
+
+  let imageUrl = null;
+  if (file) {
+    imageUrl = savePromotionImage(file);
+  }
+
+  const [result] = await db.execute(
+    `INSERT INTO promotions
+      (code, title, description, image_url, discount_type, discount_value,
+       min_booking_amount, max_discount_amount, usage_limit, used_count,
+       start_date, end_date, is_active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NOW())`,
+    [
+      code,
+      title,
+      description ?? null,
+      imageUrl,
+      discountType,
+      discountValue,
+      minBookingAmount ?? null,
+      maxDiscountAmount ?? null,
+      usageLimit ?? null,
+      toMySQLDateTime(startDate), // แก้: แปลง format ก่อน insert
+      toMySQLDateTime(endDate), // แก้: แปลง format ก่อน insert
+      data.isActive !== undefined ? Number(data.isActive) : 1,
+    ],
+  );
+
+  return result.insertId;
+}
+// ==========================================
+// UPDATE
+// ==========================================
+async function updatePromotion(id, data, file) {
+  const fields = [];
+  const params = [];
+
+  const fieldMap = {
+    code: "code",
+    title: "title",
+    description: "description",
+    discountType: "discount_type",
+    discountValue: "discount_value",
+    minBookingAmount: "min_booking_amount",
+    maxDiscountAmount: "max_discount_amount",
+    usageLimit: "usage_limit",
+    startDate: "start_date",
+    endDate: "end_date",
+  };
+
+  for (const [key, column] of Object.entries(fieldMap)) {
+    if (data[key] !== undefined) {
+      fields.push(`${column} = ?`);
+      // แก้: แปลง format เฉพาะ 2 field วันที่นี้ ก่อนใส่เข้า params
+      if (key === "startDate" || key === "endDate") {
+        params.push(toMySQLDateTime(data[key]));
+      } else {
+        params.push(data[key]);
+      }
+    }
+  }
+
+  if (data.isActive !== undefined) {
+    fields.push("is_active = ?");
+    params.push(Number(data.isActive));
+  }
+
+  if (file) {
+    const current = await getPromotionById(id);
+    if (current) deletePromotionImage(current.image_url);
+    const newImageUrl = savePromotionImage(file);
+    fields.push("image_url = ?");
+    params.push(newImageUrl);
+  }
+
+  if (fields.length === 0) return { affectedRows: 0 };
+
+  params.push(id);
+  const [result] = await db.execute(
+    `UPDATE promotions SET ${fields.join(", ")} WHERE id = ?`,
+    params,
+  );
+  return result;
+}
+
+// ==========================================
+// DELETE
+// ==========================================
+async function deletePromotion(id) {
+  const current = await getPromotionById(id);
+  if (!current) return { affectedRows: 0 };
+
+  const [result] = await db.execute(`DELETE FROM promotions WHERE id = ?`, [
+    id,
+  ]);
+  if (result.affectedRows > 0) {
+    deletePromotionImage(current.image_url);
+  }
+  return result;
+}
+
+// ...ฟังก์ชันเดิมทั้งหมดที่มีอยู่แล้ว (getActivePromotions, getPromotionById, hasUserClaimed,
+// claimPromotion, getUserCoupons, getUserPromotionById, markCouponUsed, grantPromotionToUser)
+// ไม่ต้องแก้ ให้เก็บไว้เหมือนเดิม
 module.exports = {
   buildResponse,
   getActivePromotions,
+  getAllPromotionsAdmin, // เพิ่ม
   getPromotionById,
   hasUserClaimed,
   claimPromotion,
@@ -140,4 +307,7 @@ module.exports = {
   getUserPromotionById,
   markCouponUsed,
   grantPromotionToUser,
+  createPromotion, // เพิ่ม
+  updatePromotion, // เพิ่ม
+  deletePromotion, // เพิ่ม
 };

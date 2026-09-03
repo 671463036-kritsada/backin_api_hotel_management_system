@@ -28,10 +28,7 @@ exports.getPromotionById = async (req, res) => {
 exports.claimPromotion = async (req, res) => {
   try {
     const userId = req.user.id;
-    const result = await promotionService.claimPromotion(
-      userId,
-      req.params.id,
-    );
+    const result = await promotionService.claimPromotion(userId, req.params.id);
     res.status(result.statusCode || 200).json(result);
   } catch (error) {
     res.status(500).json({
@@ -74,5 +71,53 @@ exports.grantPromotion = async (req, res) => {
       message: "grantPromotion failed",
       error: error.message,
     });
+  }
+};
+
+exports.getAllPromotionsAdmin = async (req, res) => {
+  try {
+    const result = await promotionService.getAllPromotionsAdmin();
+    res.status(200).json(result);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "getAllPromotionsAdmin failed", error: error.message });
+  }
+};
+
+exports.createPromotion = async (req, res) => {
+  try {
+    const result = await promotionService.createPromotion(req.body, req.file);
+    res.status(result.statusCode || 201).json(result);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "createPromotion failed", error: error.message });
+  }
+};
+
+exports.updatePromotion = async (req, res) => {
+  try {
+    const result = await promotionService.updatePromotion(
+      req.params.id,
+      req.body,
+      req.file,
+    );
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "updatePromotion failed", error: error.message });
+  }
+};
+
+exports.deletePromotion = async (req, res) => {
+  try {
+    const result = await promotionService.deletePromotion(req.params.id);
+    res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "deletePromotion failed", error: error.message });
   }
 };

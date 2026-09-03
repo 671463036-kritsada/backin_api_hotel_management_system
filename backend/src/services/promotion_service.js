@@ -48,11 +48,7 @@ async function claimPromotion(userId, promotionId) {
     promotionId,
   );
   if (alreadyClaimed) {
-    return promotionModel.buildResponse(
-      null,
-      "คุณได้รับคูปองนี้ไปแล้ว",
-      409,
-    );
+    return promotionModel.buildResponse(null, "คุณได้รับคูปองนี้ไปแล้ว", 409);
   }
 
   const result = await promotionModel.claimPromotion(userId, promotionId);
@@ -164,10 +160,7 @@ async function grantPromotionToUser(userId, promotionId) {
     );
   }
 
-  const result = await promotionModel.grantPromotionToUser(
-    userId,
-    promotionId,
-  );
+  const result = await promotionModel.grantPromotionToUser(userId, promotionId);
   return promotionModel.buildResponse(
     { userPromotionId: result.insertId },
     "แจกคูปองสำเร็จ",
@@ -175,12 +168,82 @@ async function grantPromotionToUser(userId, promotionId) {
   );
 }
 
+async function getAllPromotionsAdmin() {
+  const data = await promotionModel.getAllPromotionsAdmin();
+  return promotionModel.buildResponse(data);
+}
+
+async function createPromotion(data, file) {
+  if (!data.code?.trim()) {
+    return promotionModel.buildResponse(null, "กรุณาระบุรหัสโปรโมชั่น", 400);
+  }
+  if (!data.title?.trim()) {
+    return promotionModel.buildResponse(null, "กรุณาระบุชื่อโปรโมชั่น", 400);
+  }
+  if (!data.discountType || !data.discountValue) {
+    return promotionModel.buildResponse(
+      null,
+      "กรุณาระบุประเภทและมูลค่าส่วนลด",
+      400,
+    );
+  }
+  if (!data.startDate || !data.endDate) {
+    return promotionModel.buildResponse(
+      null,
+      "กรุณาระบุวันเริ่มต้นและสิ้นสุด",
+      400,
+    );
+  }
+
+  const insertId = await promotionModel.createPromotion(data, file);
+  const created = await promotionModel.getPromotionById(insertId);
+  return promotionModel.buildResponse(created, "สร้างโปรโมชั่นสำเร็จ", 201);
+}
+
+async function updatePromotion(id, data, file) {
+  const existing = await promotionModel.getPromotionById(id);
+  if (!existing) {
+    return promotionModel.buildResponse(null, "ไม่พบโปรโมชั่นนี้", 404);
+  }
+
+  const result = await promotionModel.updatePromotion(id, data, file);
+  if (result.affectedRows === 0) {
+    return promotionModel.buildResponse(null, "ไม่มีข้อมูลที่ต้องอัปเดต", 400);
+  }
+
+  const updated = await promotionModel.getPromotionById(id);
+  return promotionModel.buildResponse(updated, "อัปเดตโปรโมชั่นสำเร็จ", 200);
+}
+
+async function deletePromotion(id) {
+  const existing = await promotionModel.getPromotionById(id);
+  if (!existing) {
+    return promotionModel.buildResponse(null, "ไม่พบโปรโมชั่นนี้", 404);
+  }
+  await promotionModel.deletePromotion(id);
+  return promotionModel.buildResponse({ id }, "ลบโปรโมชั่นสำเร็จ", 200);
+}
+
 module.exports = {
   getActivePromotions,
+  getAllPromotionsAdmin, // เพิ่ม
   getPromotionById,
   claimPromotion,
   getUserCoupons,
   validateAndCalculateDiscount,
   markCouponUsed,
   grantPromotionToUser,
+  createPromotion, // เพิ่ม
+  updatePromotion, // เพิ่ม
+  deletePromotion, // เพิ่ม
 };
+
+// module.exports = {
+//   getActivePromotions,
+//   getPromotionById,
+//   claimPromotion,
+//   getUserCoupons,
+//   validateAndCalculateDiscount,
+//   markCouponUsed,
+//   grantPromotionToUser,
+// };
