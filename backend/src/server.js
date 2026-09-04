@@ -19,6 +19,7 @@ const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
 const promotionRoutes = require("./routes/promotion_routes");
 const reports = require("./routes/report_routes")
 const feedbacks = require("./routes/feedback_routes")
+const overview = require("./routes/overview_routes")
 
 const {
   autoCheckoutExpiredBookings,
@@ -69,6 +70,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/reports",reports)
 app.use("/api/feedbacks" , feedbacks)
+app.use("/api/overview" , overview)
 
 // Debug: list mounted routes (useful when route not found)
 app.get("/__debug/routes", (req, res) => {
