@@ -17,6 +17,8 @@ const checkinRoutes = require("./routes/checkin_routes");
 const houskeeperRoutes = require("./routes/houskeeper_routes");
 const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
 const promotionRoutes = require("./routes/promotion_routes");
+const reports = require("./routes/report_routes")
+const feedbacks = require("./routes/feedback_routes")
 
 const {
   autoCheckoutExpiredBookings,
@@ -65,6 +67,8 @@ app.use("/api/housekeeper/issues", houskeeperIssuesRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/promotions", promotionRoutes);
+app.use("/api/reports",reports)
+app.use("/api/feedbacks" , feedbacks)
 
 // Debug: list mounted routes (useful when route not found)
 app.get("/__debug/routes", (req, res) => {
