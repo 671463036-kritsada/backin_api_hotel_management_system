@@ -6,7 +6,16 @@ const createUpload = (folder = "uploads", allowVideo = false) => {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       const dir = `src/${folder}/`;
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+      console.log("📁 UPLOAD DESTINATION:", dir);
+      console.log("📸 UPLOAD FILE:", file.originalname);
+      console.log("🏷️ FIELD NAME:", file.fieldname);
+
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log("✅ CREATED FOLDER:", dir);
+      }
+
       cb(null, dir);
     },
     filename: (req, file, cb) => {

@@ -1,13 +1,13 @@
-
 const bookingService = require("../services/booking_service");
-
 
 exports.getPendingBookings = async (req, res) => {
   try {
     const result = await bookingService.getPendingBookings();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ message: "get pending bookings failed", error: error.message });
+    res
+      .status(500)
+      .json({ message: "get pending bookings failed", error: error.message });
   }
 };
 
@@ -19,11 +19,15 @@ exports.createBooking = async (req, res) => {
     // ถ้ามีไฟล์แนบ (จาก multer) แปลงเป็น path ที่เก็บใน DB
     const slipPath = req.file
       ? `uploads/bookings/${req.file.filename}`
-      : (req.body.slip_url || req.body.slipUrl || null);
+      : req.body.slip_url || req.body.slipUrl || null;
 
     const data = { ...req.body, slip_url: slipPath };
 
-    const result = await bookingService.createBooking(userId, customerName, data);
+    const result = await bookingService.createBooking(
+      userId,
+      customerName,
+      data,
+    );
     res.status(201).json(result);
   } catch (error) {
     res.status(500).json({
@@ -108,15 +112,32 @@ exports.checkIn = async (req, res) => {
 exports.checkOut = async (req, res) => {
   try {
     const bookingId = req.params.id;
-    const { status } = req.body;
-    const result = status
-      ? await bookingService.checkOut(bookingId, status)
-      : await bookingService.checkOut(bookingId);
+
+    const result = await bookingService.checkOut(bookingId);
+
     res.json(result);
   } catch (error) {
-    res.status(500).json({ message: "check-out failed", error: error.message });
+    console.error("check-out failed:", error);
+
+    res.status(500).json({
+      message: "check-out failed",
+      error: error.message,
+    });
   }
 };
+
+// exports.checkOut = async (req, res) => {
+//   try {
+//     const bookingId = req.params.id;
+//     const { status } = req.body;
+//     const result = status
+//       ? await bookingService.checkOut(bookingId, status)
+//       : await bookingService.checkOut(bookingId);
+//     res.json(result);
+//   } catch (error) {
+//     res.status(500).json({ message: "check-out failed", error: error.message });
+//   }
+// };
 
 // Admin shortcuts
 exports.approveBooking = async (req, res) => {
@@ -142,5 +163,3 @@ exports.rejectBooking = async (req, res) => {
     res.status(500).json({ message: "reject failed", error: error.message });
   }
 };
-
-

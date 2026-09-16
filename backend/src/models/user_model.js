@@ -56,6 +56,21 @@ exports.getUsersNotAllowed = async () => {
   }
 };
 
+
+exports.updateUserProfile = async (id, { name, phone, address }) => {
+  const sql = `
+    UPDATE users
+    SET name = ?, phone = ?, address = ?
+    WHERE id = ?
+  `;
+  try {
+    const [result] = await db.query(sql, [name, phone, address, id]);
+    return result;
+  } catch (err) {
+    throw new Error(`updateUserProfile failed: ${err.message}`);
+  }
+};
+
 exports.updateUserStatus = async (id, status) => {
   const sql = `
     UPDATE users

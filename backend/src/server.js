@@ -17,9 +17,9 @@ const checkinRoutes = require("./routes/checkin_routes");
 const houskeeperRoutes = require("./routes/houskeeper_routes");
 const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
 const promotionRoutes = require("./routes/promotion_routes");
-const reports = require("./routes/report_routes")
-const feedbacks = require("./routes/feedback_routes")
-const overview = require("./routes/overview_routes")
+const reports = require("./routes/report_routes");
+const feedbacks = require("./routes/feedback_routes");
+const overview = require("./routes/overview_routes");
 
 const {
   autoCheckoutExpiredBookings,
@@ -68,9 +68,9 @@ app.use("/api/housekeeper/issues", houskeeperIssuesRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/promotions", promotionRoutes);
-app.use("/api/reports",reports)
-app.use("/api/feedbacks" , feedbacks)
-app.use("/api/overview" , overview)
+app.use("/api/reports", reports);
+app.use("/api/feedbacks", feedbacks);
+app.use("/api/overview", overview);
 
 // Debug: list mounted routes (useful when route not found)
 app.get("/__debug/routes", (req, res) => {
@@ -108,10 +108,13 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 
   // Background job: เช็คทุก 30 นาที ว่ามี booking ที่ถึงเวลา checkout แล้วแต่ user ยังไม่กด
-  cron.schedule("*/30 * * * *", async () => {
+  // cron.schedule("0 14 * * *", async () => { ทำงานทุกวัน เวลา 14.00 
+  cron.schedule("0 * * * *", async () => {
     console.log("[auto-checkout] checking for expired bookings...");
+
     try {
       const result = await autoCheckoutExpiredBookings();
+
       if (result.processed > 0) {
         console.log(
           `[auto-checkout] auto-checked-out ${result.processed} booking(s)`,
@@ -121,4 +124,17 @@ app.listen(PORT, () => {
       console.error("[auto-checkout] job failed:", err.message);
     }
   });
+  // cron.schedule("*/30 * * * *", async () => {
+  //   console.log("[auto-checkout] checking for expired bookings...");
+  //   try {
+  //     const result = await autoCheckoutExpiredBookings();
+  //     if (result.processed > 0) {
+  //       console.log(
+  //         `[auto-checkout] auto-checked-out ${result.processed} booking(s)`,
+  //       );
+  //     }
+  //   } catch (err) {
+  //     console.error("[auto-checkout] job failed:", err.message);
+  //   }
+  // });
 });

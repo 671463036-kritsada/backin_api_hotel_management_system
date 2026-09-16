@@ -1,3 +1,5 @@
+const db = require("../config/db");
+
 function buildResponse(data, message = "success", statusCode = 200) {
   return {
     message,
@@ -6,30 +8,111 @@ function buildResponse(data, message = "success", statusCode = 200) {
   };
 }
 
-function generateMockHousekeeper() {
-  const items = [];
-  for (let index = 0; index < 50; index++) {
-    const floor = Math.floor(index / 10) + 1;
-    const roomNum = (index % 10) + 1;
-    const roomNo = `${floor}${String(roomNum).padStart(2, "0")}`;
-    const statuses = [
-      "ต้องทำความสะอาด",
-      "ทำความสะอาดแล้ว",
-      "รอการตรวจสอบ",
-      "ปิดปรับปรุง",
-    ];
-    items.push({
-      roomNo,
-      status: statuses[index % 4],
-      assignedTo: `แม่บ้าน ${(index % 6) + 1}`,
-      lastCleaned: new Date(Date.now() - (index % 3) * 86400000).toISOString(),
-      notes: index % 5 === 0 ? "พบความเสียหายเล็กน้อย" : "",
-    });
+function normalizeCleaningStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value.includes("เสร็จ") || value.includes("complete")) {
+    return "ทำความสะอาดเสร็จสิ้น";
   }
 
-  return buildResponse(items);
+  if (value.includes("กำลังทำ") || value.includes("cleaning")) {
+    return "กำลังทำความสะอาด";
+  }
+
+  if (value.includes("ตรวจสอบ") || value.includes("ตรวจ")) {
+    return "รอตรวจสอบ";
+  }
+
+  if (
+    value.includes("ปิดปรับปรุง") ||
+    value.includes("maintenance") ||
+    value.includes("repair")
+  ) {
+    return "ปิดปรับปรุง";
+  }
+
+  if (value.includes("ลูกค้า") || value.includes("occupied")) {
+    return "มีลูกค้าพักอยู่";
+  }
+
+  return "ยังไม่ได้ทำความสะอาด";
 }
 
-exports.getHousekeeperData = async () => {
-  return generateMockHousekeeper();
+async function getHousekeeperData() {
+  const [rows] = await db.query(`
+    SELECT
+      r.id AS roomNo,
+      COALESCE(NULLIF(r.building, 0), 1) AS building,
+      r.cleaning_status AS cleaningStatus,
+      r.room_type AS roomType,
+      r.name AS roomName,
+      r.description,
+      r.price,
+      r.created_at AS createdAt,
+      r.updated_at AS updatedAt
+    FROM rooms r
+    ORDER BY
+      COALESCE(NULLIF(r.building, 0), 1),
+      r.id
+  `);
+
+  const data = rows.map((row) => ({
+    roomNo: String(row.roomNo),
+    building: String(row.building || 1),
+    cleaningStatus: normalizeCleaningStatus(row.cleaningStatus),
+    status: normalizeCleaningStatus(row.cleaningStatus),
+    roomType: row.roomType,
+    roomName: row.roomName,
+    description: row.description,
+    price: row.price,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }));
+
+  return buildResponse(data);
+}
+
+async function updateCleaningStatus(roomNo, cleaningStatus) {
+  const allowedStatuses = [
+    "ยังไม่ได้ทำความสะอาด",
+    "กำลังทำความสะอาด",
+    "ทำความสะอาดเสร็จสิ้น",
+    "รอตรวจสอบ",
+    "ปิดปรับปรุง",
+    "มีลูกค้าพักอยู่",
+  ];
+
+  if (!allowedStatuses.includes(cleaningStatus)) {
+    return buildResponse(
+      null,
+      "สถานะการทำความสะอาดไม่ถูกต้อง",
+      400
+    );
+  }
+
+  const [result] = await db.query(
+    `
+      UPDATE rooms
+      SET cleaning_status = ?, updated_at = NOW()
+      WHERE id = ?
+    `,
+    [cleaningStatus, roomNo]
+  );
+
+  if (result.affectedRows === 0) {
+    return buildResponse(null, "ไม่พบห้องที่ระบุ", 404);
+  }
+
+  return buildResponse(
+    {
+      roomNo,
+      cleaningStatus,
+    },
+    "อัปเดตสถานะห้องสำเร็จ"
+  );
+}
+
+module.exports = {
+  getHousekeeperData,
+  updateCleaningStatus,
 };

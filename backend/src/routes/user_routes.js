@@ -12,5 +12,6 @@ router.delete('/:id', authMiddleware, isAdmin, userController.deleteUser)
 
 // user_routes.js
 router.get('/me', authMiddleware, userController.getMyProfile)
+router.put('/me', authMiddleware, userController.updateMyProfile)
 
 module.exports = router

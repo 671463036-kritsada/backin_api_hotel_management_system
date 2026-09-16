@@ -14,7 +14,7 @@ router.post(
   "/",
   authMiddleware,
   isAdmin,
-  uploadRoomImage.array("images", 10), // รับได้สูงสุด 10 รูป, field name เปลี่ยนเป็น "images"
+  uploadRoomImage.array("images", 10), // รับได้สูงสุด 10 รูป
   roomController.createRoom,
 );
 router.put(

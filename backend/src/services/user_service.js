@@ -11,6 +11,12 @@ exports.getUserById = async (id) => {
 }
 
 
+exports.updateUserProfile = async (id, { name, phone, address }) => {
+  await userModel.updateUserProfile(id, { name, phone, address });
+  return await userModel.findUserById(id);
+};
+
+
 exports.getUsersNotAllowed = async () => {
   return await userModel.getUsersNotAllowed();
 };
