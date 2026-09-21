@@ -7,13 +7,13 @@ const createUpload = (folder = "uploads", allowVideo = false) => {
     destination: (req, file, cb) => {
       const dir = `src/${folder}/`;
 
-      console.log("📁 UPLOAD DESTINATION:", dir);
-      console.log("📸 UPLOAD FILE:", file.originalname);
-      console.log("🏷️ FIELD NAME:", file.fieldname);
+      console.log("UPLOAD DESTINATION:", dir);
+      console.log("UPLOAD FILE:", file.originalname);
+      console.log("FIELD NAME:", file.fieldname);
 
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
-        console.log("✅ CREATED FOLDER:", dir);
+        console.log("CREATED FOLDER:", dir);
       }
 
       cb(null, dir);
