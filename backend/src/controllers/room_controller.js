@@ -1,5 +1,5 @@
 // controllers/room_controller.js
-const roomService = require('../services/room_service');
+const roomService = require("../services/room_service");
 
 function send(res, result) {
   return res.status(result.statusCode || 200).json(result);
@@ -13,9 +13,19 @@ exports.getRooms = async (req, res) => {
 exports.getAvailableRooms = async (req, res) => {
   const { checkIn, checkOut, roomType } = req.query;
   if (!checkIn || !checkOut) {
-    return res.status(400).json({ message: 'ต้องระบุ checkIn และ checkOut', statusCode: 400, data: null });
+    return res
+      .status(400)
+      .json({
+        message: "ต้องระบุ checkIn และ checkOut",
+        statusCode: 400,
+        data: null,
+      });
   }
-  const result = await roomService.getAvailableRooms({ checkIn, checkOut, roomType });
+  const result = await roomService.getAvailableRooms({
+    checkIn,
+    checkOut,
+    roomType,
+  });
   send(res, result);
 };
 
@@ -24,12 +34,21 @@ exports.getRoomById = async (req, res) => {
   send(res, result);
 };
 
+exports.getExtraBedTypes = async (req, res) => {
+  const result = await roomService.getExtraBedTypes();
+  send(res, result);
+};
+
 exports.createRoom = async (req, res) => {
   const result = await roomService.createRoom(req.body, req.files); // แก้: req.files
   send(res, result);
 };
 exports.updateRoom = async (req, res) => {
-  const result = await roomService.updateRoom(req.params.id, req.body, req.files); // แก้
+  const result = await roomService.updateRoom(
+    req.params.id,
+    req.body,
+    req.files,
+  ); // แก้
   send(res, result);
 };
 

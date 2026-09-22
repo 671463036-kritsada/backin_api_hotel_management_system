@@ -16,6 +16,12 @@ router.post(
   upload.single("paymentSlip"),
   bookingController.createBooking,
 );
+router.post(
+  "/cart",
+  authMiddleware,
+  upload.single("paymentSlip"),
+  bookingController.createCartBooking,
+);
 
 router.get("/", authMiddleware, bookingController.getBookings);
 router.get("/:id", authMiddleware, bookingController.getBookingById);

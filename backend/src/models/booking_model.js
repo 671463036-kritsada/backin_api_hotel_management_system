@@ -1,13 +1,11 @@
 const db = require("../config/db");
 const { generateBookingId } = require("../utils/id_generator");
 
-
 async function getPendingBookings() {
   const sql = `SELECT * FROM bookings WHERE status = 'PENDING' ORDER BY created_at DESC`;
   const [rows] = await db.query(sql);
   return rows;
 }
-
 
 async function createBooking(data) {
   const year = new Date().getFullYear();
@@ -75,6 +73,132 @@ async function createBooking(data) {
   await db.execute(sql, values);
 
   return { insertId: id };
+}
+
+async function createCartBookings(data) {
+  const connection = await db.getConnection();
+  const bookingIds = [];
+  let totalPrice = 0;
+
+  try {
+    await connection.beginTransaction();
+
+    for (const item of data.items) {
+      const roomId = item.roomId || item.room_id;
+      const checkIn = item.checkInDate || item.check_in;
+      const checkOut = item.checkOutDate || item.check_out;
+      const adults = Number(item.adultCount ?? item.adult_count ?? 1);
+      const children = Number(item.childCount ?? item.child_count ?? 0);
+      const extraBedTypeId =
+        item.extraBedTypeId ?? item.extra_bed_type_id ?? null;
+      const extraBedQuantity = Number(
+        item.extraBedQuantity ?? item.extra_bed_quantity ?? 0,
+      );
+      const nights = Math.ceil(
+        (new Date(checkOut) - new Date(checkIn)) / (24 * 60 * 60 * 1000),
+      );
+
+      const [availability] = await connection.execute(
+        `SELECT COUNT(*) AS count FROM bookings
+         WHERE room_id = ?
+           AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT')
+           AND check_in < ? AND check_out > ?`,
+        [roomId, checkOut, checkIn],
+      );
+      if (availability[0].count > 0) {
+        throw new Error(`ห้อง ${roomId} ถูกจองไปแล้วในช่วงวันที่ที่เลือก`);
+      }
+
+      const [roomRows] = await connection.execute(
+        `SELECT price FROM rooms WHERE id = ? LIMIT 1`,
+        [roomId],
+      );
+      if (roomRows.length === 0) throw new Error(`ไม่พบห้องพัก ${roomId}`);
+
+      const roomPrice = Number(roomRows[0].price) * nights;
+      let extraBedPrice = 0;
+      if (extraBedTypeId !== null && extraBedQuantity > 0) {
+        const [bedRows] = await connection.execute(
+          `SELECT price FROM extra_bed_types WHERE id = ? AND is_active = 1 LIMIT 1`,
+          [extraBedTypeId],
+        );
+        if (bedRows.length === 0)
+          throw new Error("ไม่พบประเภทเตียงเสริมที่ใช้งานอยู่");
+        if (children < 1 || extraBedQuantity > children) {
+          throw new Error("จำนวนเตียงเสริมต้องไม่เกินจำนวนเด็ก");
+        }
+        extraBedPrice = Number(bedRows[0].price) * extraBedQuantity * nights;
+      }
+
+      const [lastBooking] = await connection.execute(
+        `SELECT id FROM bookings WHERE id LIKE ? ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+        [`BK-${new Date().getFullYear()}%`],
+      );
+      const seq =
+        lastBooking.length > 0
+          ? parseInt(lastBooking[0].id.substring(7), 10) + 1
+          : 1;
+      const bookingId = generateBookingId(new Date().getFullYear(), seq);
+      const itemTotalPrice = roomPrice + extraBedPrice;
+      totalPrice += itemTotalPrice;
+
+      await connection.execute(
+        `INSERT INTO bookings (
+          id, user_id, customer_name, room_id, check_in, check_out,
+          rooms_count, person_count, adult_count, child_count,
+          extra_bed_type_id, extra_bed_quantity, room_price, extra_bed_price,
+          amount, paid_amount, remaining_amount,
+          phone, email, bank_account, address, status, payment_status,
+          slip_url, check_in_status, check_out_status, inspection_status,
+          room_key, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 'PENDING', ?,
+          'NOT_CHECKED_IN', 'NOT_CHECKED_OUT', 'PENDING', NULL, NOW())`,
+        [
+          bookingId,
+          data.user_id,
+          data.customer_name || data.fullName || null,
+          roomId,
+          checkIn,
+          checkOut,
+          1,
+          adults + children,
+          adults,
+          children,
+          extraBedTypeId,
+          extraBedQuantity,
+          roomPrice,
+          extraBedPrice,
+          itemTotalPrice,
+          itemTotalPrice * 0.3,
+          itemTotalPrice * 0.7,
+          data.phoneNumber || data.phone || null,
+          data.email || null,
+          data.bankAccount || data.bank_account || null,
+          data.address || null,
+          data.slip_url || null,
+        ],
+      );
+      bookingIds.push(bookingId);
+    }
+
+    await connection.execute(
+      `DELETE FROM cart WHERE user_id = ? AND status = 'ACTIVE'`,
+      [data.user_id],
+    );
+
+    await connection.commit();
+    return {
+      bookingIds,
+      totalPrice,
+      depositAmount: totalPrice * 0.3,
+      remainingAmount: totalPrice * 0.7,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function getBookings() {
@@ -204,7 +328,6 @@ async function updateCheckOutStatus(id, status = "CHECKED_OUT") {
   return result;
 }
 
-
 async function getExpiredCheckedInBookings() {
   const sql = `
     SELECT *
@@ -232,6 +355,7 @@ async function updateInspectionStatus(id, status) {
 
 module.exports = {
   createBooking,
+  createCartBookings,
   getBookings,
   getBookingById,
   getBookingsByUserId,

@@ -2,10 +2,18 @@ const roomModel = require("../models/room_model");
 
 async function getAvailableRooms({ checkIn, checkOut, roomType }) {
   if (!checkIn || !checkOut) {
-    return roomModel.buildResponse(null, "กรุณาระบุวันที่เช็คอินและเช็คเอาท์", 400);
+    return roomModel.buildResponse(
+      null,
+      "กรุณาระบุวันที่เช็คอินและเช็คเอาท์",
+      400,
+    );
   }
   if (new Date(checkIn) >= new Date(checkOut)) {
-    return roomModel.buildResponse(null, "วันที่เช็คเอาท์ต้องอยู่หลังวันที่เช็คอิน", 400);
+    return roomModel.buildResponse(
+      null,
+      "วันที่เช็คเอาท์ต้องอยู่หลังวันที่เช็คอิน",
+      400,
+    );
   }
   return roomModel.getAvailableRooms({ checkIn, checkOut, roomType });
 }
@@ -15,6 +23,10 @@ async function getRooms() {
 }
 async function getRoomById(id) {
   return roomModel.getRoomById(id);
+}
+
+async function getExtraBedTypes() {
+  return roomModel.getExtraBedTypes();
 }
 
 async function createRoom(data, file) {
@@ -38,6 +50,7 @@ async function deleteRoom(id) {
 module.exports = {
   getRooms,
   getRoomById,
+  getExtraBedTypes,
   createRoom,
   updateRoom,
   deleteRoom,

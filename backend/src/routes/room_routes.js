@@ -8,6 +8,7 @@ const router = express.Router();
 
 router.get("/", roomController.getRooms);
 router.get("/available", roomController.getAvailableRooms);
+router.get("/extra-bed-types", roomController.getExtraBedTypes);
 router.get("/:id", roomController.getRoomById);
 
 router.post(
@@ -21,7 +22,7 @@ router.put(
   "/:id",
   authMiddleware,
   isAdmin,
-  uploadRoomImage.array("images", 10), 
+  uploadRoomImage.array("images", 10),
   roomController.updateRoom,
 );
 router.delete("/:id", authMiddleware, isAdmin, roomController.deleteRoom);

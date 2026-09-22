@@ -37,6 +37,42 @@ exports.createBooking = async (req, res) => {
   }
 };
 
+exports.createCartBooking = async (req, res) => {
+  try {
+    const slipPath = req.file
+      ? `uploads/bookings/${req.file.filename}`
+      : req.body.slip_url || req.body.slipUrl || null;
+
+    let items;
+    try {
+      items =
+        typeof req.body.items === "string"
+          ? JSON.parse(req.body.items)
+          : req.body.items;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: "items ต้องเป็น JSON ที่ถูกต้อง",
+      });
+    }
+
+    const result = await bookingService.createCartBooking(
+      req.user.id,
+      req.user.name,
+      { ...req.body, items, slip_url: slipPath },
+    );
+
+    if (!result.success) return res.status(400).json(result);
+    res.status(201).json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "create cart booking failed",
+      error: error.message,
+    });
+  }
+};
+
 exports.getBookings = async (req, res) => {
   try {
     const result = await bookingService.getBookings();

@@ -2,7 +2,7 @@ const bookingModel = require("../models/booking_model");
 const roomModel = require("../models/room_model");
 
 const checkinModel = require("../models/checkin_model");
-
+const { createPromptPayPayload } = require("../utils/promptpay_qr");
 
 async function createBooking(userId, customerName, data) {
   data.user_id = userId;
@@ -13,15 +13,28 @@ async function createBooking(userId, customerName, data) {
   const checkOut = data.check_out || data.checkOutDate;
 
   if (!roomId || !checkIn || !checkOut) {
-    return { success: false, message: "กรุณาระบุห้อง วันที่เช็คอิน และเช็คเอาท์" };
+    return {
+      success: false,
+      message: "กรุณาระบุห้อง วันที่เช็คอิน และเช็คเอาท์",
+    };
   }
   if (new Date(checkIn) >= new Date(checkOut)) {
-    return { success: false, message: "วันที่เช็คเอาท์ต้องอยู่หลังวันที่เช็คอิน" };
+    return {
+      success: false,
+      message: "วันที่เช็คเอาท์ต้องอยู่หลังวันที่เช็คอิน",
+    };
   }
 
-  const isAvailable = await roomModel.isRoomAvailable(roomId, checkIn, checkOut);
+  const isAvailable = await roomModel.isRoomAvailable(
+    roomId,
+    checkIn,
+    checkOut,
+  );
   if (!isAvailable) {
-    return { success: false, message: "ห้องนี้ถูกจองไปแล้วในช่วงวันที่ที่เลือก" };
+    return {
+      success: false,
+      message: "ห้องนี้ถูกจองไปแล้วในช่วงวันที่ที่เลือก",
+    };
   }
 
   const result = await bookingModel.createBooking(data);
@@ -33,8 +46,51 @@ async function createBooking(userId, customerName, data) {
   return { success: false, message: "create failed" };
 }
 
+async function createCartBooking(userId, customerName, data) {
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    return { success: false, message: "ไม่พบห้องพักในตะกร้า" };
+  }
+
+  for (const item of data.items) {
+    const roomId = item.roomId || item.room_id;
+    const checkIn = item.checkInDate || item.check_in;
+    const checkOut = item.checkOutDate || item.check_out;
+    if (!roomId || !checkIn || !checkOut) {
+      return {
+        success: false,
+        message: "กรุณาระบุห้อง วันที่เช็คอิน และเช็คเอาท์ให้ครบทุกห้อง",
+      };
+    }
+    if (new Date(checkIn) >= new Date(checkOut)) {
+      return {
+        success: false,
+        message: "วันที่เช็คเอาท์ต้องอยู่หลังวันที่เช็คอิน",
+      };
+    }
+  }
+
+  const result = await bookingModel.createCartBookings({
+    ...data,
+    user_id: userId,
+    customer_name: customerName,
+  });
+
+  const promptPayId = process.env.PROMPTPAY_ID;
+  if (!promptPayId) {
+    throw new Error("ยังไม่ได้ตั้งค่า PROMPTPAY_ID ใน backend .env");
+  }
+
+  return {
+    success: true,
+    data: {
+      ...result,
+      qrPayload: createPromptPayPayload(promptPayId, result.depositAmount),
+    },
+  };
+}
+
 async function checkIn(id, data) {
-  return bookingModel.updateCheckInStatus(id, data); 
+  return bookingModel.updateCheckInStatus(id, data);
 }
 
 async function checkOut(id, status = "CHECKED_OUT") {
@@ -72,7 +128,8 @@ async function updateBooking(id, data) {
   if (!oldBooking) return { success: false, message: "booking not found" };
 
   const result = await bookingModel.updateBooking(id, data);
-  if (result.affectedRows === 0) return { success: false, message: "booking not found" };
+  if (result.affectedRows === 0)
+    return { success: false, message: "booking not found" };
 
   // ตัดส่วน roomModel.updateRoomStatus ออกทั้งหมด (ไม่ต้องแก้ room เวลาเปลี่ยนห้อง เพราะคำนวณสดอยู่แล้ว)
 
@@ -85,13 +142,15 @@ async function deleteBooking(id) {
   if (!booking) return { success: false, message: "booking not found" };
 
   const result = await bookingModel.deleteBooking(id);
-  if (result.affectedRows === 0) return { success: false, message: "booking not found" };
+  if (result.affectedRows === 0)
+    return { success: false, message: "booking not found" };
 
   return { success: true, data: { id } };
 }
 
 module.exports = {
   createBooking,
+  createCartBooking,
   checkIn,
   checkOut,
   getBookings,

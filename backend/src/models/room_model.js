@@ -45,7 +45,7 @@ function deleteRoomImage(relativePath) {
 async function deleteAllRoomImages(roomId) {
   const [images] = await db.query(
     `SELECT image_url FROM room_images WHERE room_id = ?`,
-    [roomId]
+    [roomId],
   );
   images.forEach((img) => deleteRoomImage(img.image_url));
   await db.execute(`DELETE FROM room_images WHERE room_id = ?`, [roomId]);
@@ -219,6 +219,21 @@ exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
   return rows[0].count === 0;
 };
 
+exports.getExtraBedTypes = async () => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, name, description, price, max_child_age AS maxChildAge
+       FROM extra_bed_types
+       WHERE is_active = 1
+       ORDER BY id ASC`,
+    );
+    return buildResponse(rows);
+  } catch (err) {
+    console.error("getExtraBedTypes error:", err);
+    return buildResponse(null, `getExtraBedTypes error: ${err.message}`, 500);
+  }
+};
+
 // ==========================================
 // GET NEXT ROOM SEQUENCE
 // ==========================================
@@ -254,7 +269,7 @@ exports.createRoom = async (data, files) => {
     const name = data.name || data.roomName || null;
     const description = data.description ?? null;
     const price = Number(data.pricePerNight ?? data.price ?? 0);
-    const bank = data.bank ?? null ;
+    const bank = data.bank ?? null;
 
     if (!name || !String(name).trim()) {
       return buildResponse(null, "room name is required", 400);

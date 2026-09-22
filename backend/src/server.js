@@ -13,6 +13,7 @@ const roomRoutes = require("./routes/room_routes");
 const historyRoutes = require("./routes/history_routes");
 const furnitureRoutes = require("./routes/furniture_routes");
 const bookingsRoutes = require("./routes/bookings_routes");
+const cartRoutes = require("./routes/cart_routes");
 const checkinRoutes = require("./routes/checkin_routes");
 const houskeeperRoutes = require("./routes/houskeeper_routes");
 const houskeeperIssuesRoutes = require("./routes/houskeeper_issues_routes");
@@ -20,7 +21,7 @@ const promotionRoutes = require("./routes/promotion_routes");
 const reports = require("./routes/report_routes");
 const feedbacks = require("./routes/feedback_routes");
 const overview = require("./routes/overview_routes");
-const maintenance = require("./routes/maintenance_routes")
+const maintenance = require("./routes/maintenance_routes");
 
 const {
   autoCheckoutExpiredBookings,
@@ -58,6 +59,7 @@ app.use((req, res, next) => {
 app.use("/api/uploads", express.static(path.join(__dirname, "./uploads")));
 app.use("/api/rooms", roomRoutes);
 app.use("/api/bookings", bookingsRoutes);
+app.use("/api/cart", cartRoutes);
 // alias used by admin frontend
 app.use("/api/booking-list", bookingsRoutes);
 app.use("/api/history", historyRoutes);
@@ -72,7 +74,7 @@ app.use("/api/promotions", promotionRoutes);
 app.use("/api/reports", reports);
 app.use("/api/feedbacks", feedbacks);
 app.use("/api/overview", overview);
-app.use("/api/maintenance", maintenance)
+app.use("/api/maintenance", maintenance);
 
 // Debug: list mounted routes (useful when route not found)
 app.get("/__debug/routes", (req, res) => {
@@ -110,7 +112,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 
   // Background job: เช็คทุก 30 นาที ว่ามี booking ที่ถึงเวลา checkout แล้วแต่ user ยังไม่กด
-  // cron.schedule("0 14 * * *", async () => { ทำงานทุกวัน เวลา 14.00 
+  // cron.schedule("0 14 * * *", async () => { ทำงานทุกวัน เวลา 14.00
   cron.schedule("0 * * * *", async () => {
     console.log("[auto-checkout] checking for expired bookings...");
 
