@@ -1,11 +1,7 @@
 const furnitureModel = require("../models/furniture_model");
 const bookingModel = require("../models/booking_model");
 
-function buildResponse(
-  data,
-  message = "success",
-  statusCode = 200,
-) {
+function buildResponse(data, message = "success", statusCode = 200) {
   return {
     message,
     statusCode,
@@ -14,11 +10,10 @@ function buildResponse(
 }
 
 async function getFurniture(roomId, bookingId = "") {
-  const data =
-    await furnitureModel.getFurnitureByRoomAndBooking(
-      roomId,
-      bookingId,
-    );
+  const data = await furnitureModel.getFurnitureByRoomAndBooking(
+    roomId,
+    bookingId,
+  );
 
   return buildResponse(data);
 }
@@ -37,55 +32,47 @@ async function submitReport(
     const inspection = item.inspections?.[0];
 
     // รูปของ furniture รายการนี้
-    const inspectionImage =
-      files[`photo_${i}`] || null;
+    const inspectionImage = files[`photo_${i}`] || null;
 
-    const result =
-      await furnitureModel.createFurnitureInspection({
-        furnitureId: item.isCustom
-          ? null
-          : item.id,
+    const result = await furnitureModel.createFurnitureInspection({
+      furnitureId: item.id || null,
 
-        roomId: item.roomId,
-        bookingId: item.bookingId,
+      roomId: item.roomId,
+      bookingId: item.bookingId,
 
-        title: item.title,
-        image: item.image,
+      title: item.title,
+      image: item.image,
 
-        inspectorId,
-        inspectorRole,
+      inspectorId,
+      inspectorRole,
 
-        status: inspection?.status,
-        note: inspection?.note,
+      status: inspection?.status,
+      note: inspection?.note,
 
-        inspectionImage,
-      });
+      inspectionImage,
+    });
 
     results.push(result);
   }
 
-  const bookingId =
-    reportItems[0]?.bookingId;
+  const bookingId = reportItems[0]?.bookingId;
 
   if (bookingId) {
-    await bookingModel.updateInspectionStatus(
-      bookingId,
-      "COMPLETED",
-    );
+    await bookingModel.updateInspectionStatus(bookingId, "COMPLETED");
   }
 
-  return buildResponse(
-    results,
-    "furniture inspection submitted",
-    201,
-  );
+  return buildResponse(results, "furniture inspection submitted", 201);
+}
+
+async function confirmUserCondition(bookingId, userId) {
+  return furnitureModel.confirmUserCondition(bookingId, userId);
 }
 
 module.exports = {
   getFurniture,
   submitReport,
+  confirmUserCondition,
 };
-
 
 // const fs = require("fs");
 // const path = require("path");

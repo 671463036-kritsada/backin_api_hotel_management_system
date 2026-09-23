@@ -8,17 +8,18 @@ const router = express.Router();
 
 const uploadImage = require("../middleware/furniture_upload_middleware");
 
-router.get(
-  "/",
-  authMiddleware,
-  furnitureController.getFurniture,
-);
+router.get("/", authMiddleware, furnitureController.getFurniture);
 
 router.post(
   "/report",
   authMiddleware,
   uploadImage.any(),
-  furnitureController.submitReport
+  furnitureController.submitReport,
+);
+router.post(
+  "/confirm",
+  authMiddleware,
+  furnitureController.confirmUserCondition,
 );
 
 module.exports = router;
@@ -39,9 +40,6 @@ module.exports = router;
 // );
 
 // module.exports = router;
-
-
-
 
 // const express = require("express");
 // const furnitureController = require("../controllers/furniture_controller");

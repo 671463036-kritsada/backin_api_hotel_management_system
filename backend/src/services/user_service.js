@@ -4,18 +4,15 @@ exports.getUsers = async () => {
   return await userModel.getAllUsers();
 };
 
-
 // user.service.js
 exports.getUserById = async (id) => {
-  return await userModel.findUserById(id)
-}
-
+  return await userModel.findUserById(id);
+};
 
 exports.updateUserProfile = async (id, { name, phone, address }) => {
   await userModel.updateUserProfile(id, { name, phone, address });
   return await userModel.findUserById(id);
 };
-
 
 exports.getUsersNotAllowed = async () => {
   return await userModel.getUsersNotAllowed();
@@ -33,7 +30,15 @@ exports.blockUser = async (data) => {
   return { success: true, message: "User Blocked" };
 };
 
-exports.deleteUser = async (id) => {
-  await userModel.deleteUser(id);
-  return { success: true, message: "User Deleted" };
+exports.deleteUser = async (id, requesterId) => {
+  if (id === requesterId) {
+    return {
+      success: false,
+      statusCode: 400,
+      message: "ไม่สามารถลบบัญชีของตัวเองได้",
+    };
+  }
+
+  const result = await userModel.deleteUser(id);
+  return result;
 };

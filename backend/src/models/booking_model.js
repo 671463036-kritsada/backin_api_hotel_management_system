@@ -1,6 +1,15 @@
 const db = require("../config/db");
 const { generateBookingId } = require("../utils/id_generator");
 
+function toSqlDate(value) {
+  if (!value) return null;
+  const datePart = String(value).match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (datePart) return datePart;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
 async function getPendingBookings() {
   const sql = `SELECT * FROM bookings WHERE status = 'PENDING' ORDER BY created_at DESC`;
   const [rows] = await db.query(sql);
@@ -85,8 +94,8 @@ async function createCartBookings(data) {
 
     for (const item of data.items) {
       const roomId = item.roomId || item.room_id;
-      const checkIn = item.checkInDate || item.check_in;
-      const checkOut = item.checkOutDate || item.check_out;
+      const checkIn = toSqlDate(item.checkInDate || item.check_in);
+      const checkOut = toSqlDate(item.checkOutDate || item.check_out);
       const adults = Number(item.adultCount ?? item.adult_count ?? 1);
       const children = Number(item.childCount ?? item.child_count ?? 0);
       const extraBedTypeId =
@@ -101,7 +110,7 @@ async function createCartBookings(data) {
       const [availability] = await connection.execute(
         `SELECT COUNT(*) AS count FROM bookings
          WHERE room_id = ?
-           AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT')
+           AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
            AND check_in < ? AND check_out > ?`,
         [roomId, checkOut, checkIn],
       );
@@ -151,8 +160,7 @@ async function createCartBookings(data) {
           phone, email, bank_account, address, status, payment_status,
           slip_url, check_in_status, check_out_status, inspection_status,
           room_key, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 'PENDING', ?,
-          'NOT_CHECKED_IN', 'NOT_CHECKED_OUT', 'PENDING', NULL, NOW())`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           bookingId,
           data.user_id,
@@ -175,7 +183,13 @@ async function createCartBookings(data) {
           data.email || null,
           data.bankAccount || data.bank_account || null,
           data.address || null,
+          "PENDING",
+          "PENDING",
           data.slip_url || null,
+          "NOT_CHECKED_IN",
+          "NOT_CHECKED_OUT",
+          "PENDING",
+          null,
         ],
       );
       bookingIds.push(bookingId);
@@ -281,6 +295,18 @@ async function updateBooking(id, data) {
     fields.push("inspection_status = ?");
     params.push(data.inspection_status || data.inspectionStatus);
   }
+  if (data.cancel_reason !== undefined) {
+    fields.push("cancel_reason = ?");
+    params.push(data.cancel_reason);
+  }
+  if (data.cancelled_by !== undefined) {
+    fields.push("cancelled_by = ?");
+    params.push(data.cancelled_by);
+  }
+  if (data.cancelled_at !== undefined) {
+    fields.push("cancelled_at = ?");
+    params.push(data.cancelled_at);
+  }
 
   if (fields.length === 0) return { affectedRows: 0 };
 
@@ -293,6 +319,82 @@ async function updateBooking(id, data) {
 async function deleteBooking(id) {
   const [result] = await db.execute(`DELETE FROM bookings WHERE id = ?`, [id]);
   return result;
+}
+
+async function cancelBooking(id, { requesterId, requesterRole, reason }) {
+  const [rows] = await db.execute(
+    `SELECT id, user_id, status, check_in_status, paid_amount
+     FROM bookings WHERE id = ? LIMIT 1`,
+    [id],
+  );
+  if (!rows.length) {
+    return { success: false, statusCode: 404, message: "ไม่พบ booking" };
+  }
+
+  const booking = rows[0];
+  const isAdmin = String(requesterRole || "").toLowerCase() === "admin";
+  if (!isAdmin && booking.user_id !== requesterId) {
+    return {
+      success: false,
+      statusCode: 403,
+      message: "คุณไม่มีสิทธิ์ยกเลิก booking นี้",
+    };
+  }
+  if (!String(reason || "").trim()) {
+    return {
+      success: false,
+      statusCode: 400,
+      message: "กรุณาระบุเหตุผลการยกเลิก",
+    };
+  }
+  if (
+    [
+      "CANCELLED",
+      "CANCELLED_BY_USER",
+      "CANCELLED_BY_ADMIN",
+      "REJECTED",
+      "CHECKED_OUT",
+    ].includes(booking.status)
+  ) {
+    return {
+      success: false,
+      statusCode: 409,
+      message: `ไม่สามารถยกเลิก booking ที่มีสถานะ ${booking.status} ได้`,
+    };
+  }
+  if (booking.check_in_status === "CHECKED_IN") {
+    return {
+      success: false,
+      statusCode: 409,
+      message: "ไม่สามารถยกเลิก booking หลังเช็คอินแล้วได้",
+    };
+  }
+
+  const paymentStatus =
+    Number(booking.paid_amount || 0) > 0 ? "REFUND_PENDING" : "NOT_REQUIRED";
+  await db.execute(
+    `UPDATE bookings
+     SET status = ?, payment_status = ?, cancel_reason = ?,
+         cancelled_by = ?, cancelled_at = NOW(), updated_at = NOW()
+     WHERE id = ?`,
+    [
+      isAdmin ? "CANCELLED_BY_ADMIN" : "CANCELLED_BY_USER",
+      paymentStatus,
+      String(reason).trim(),
+      requesterId,
+      id,
+    ],
+  );
+  return {
+    success: true,
+    data: {
+      id,
+      status: isAdmin ? "CANCELLED_BY_ADMIN" : "CANCELLED_BY_USER",
+      paymentStatus,
+      reason: String(reason).trim(),
+    },
+    message: "ยกเลิก booking สำเร็จ",
+  };
 }
 
 async function updateCheckInStatus(id, data = {}) {
@@ -362,6 +464,7 @@ module.exports = {
   getPendingBookings,
   updateBooking,
   deleteBooking,
+  cancelBooking,
   updateCheckInStatus,
   updateCheckOutStatus,
   getExpiredCheckedInBookings,

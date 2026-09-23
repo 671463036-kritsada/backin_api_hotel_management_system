@@ -125,13 +125,35 @@ exports.updateBooking = async (req, res) => {
 
 exports.deleteBooking = async (req, res) => {
   try {
-    const result = await bookingService.deleteBooking(req.params.id);
-    if (!result.success) return res.status(404).json(result);
+    const result = await bookingService.deleteBooking(req.params.id, {
+      requesterId: req.user.id,
+      requesterRole: req.user.role,
+      reason: req.body?.reason,
+    });
+    if (!result.success)
+      return res.status(result.statusCode || 409).json(result);
     res.json(result);
   } catch (error) {
     res
       .status(500)
       .json({ message: "deleteBooking failed", error: error.message });
+  }
+};
+
+exports.cancelBooking = async (req, res) => {
+  try {
+    const result = await bookingService.deleteBooking(req.params.id, {
+      requesterId: req.user.id,
+      requesterRole: req.user.role,
+      reason: req.body?.reason,
+    });
+    res.status(result.success ? 200 : result.statusCode || 409).json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "cancelBooking failed",
+      error: error.message,
+    });
   }
 };
 
@@ -190,8 +212,18 @@ exports.approveBooking = async (req, res) => {
 
 exports.rejectBooking = async (req, res) => {
   try {
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        message: "กรุณาระบุเหตุผลการปฏิเสธการจอง",
+      });
+    }
     const result = await bookingService.updateBooking(req.params.id, {
       status: "REJECTED",
+      cancel_reason: reason,
+      cancelled_by: req.user.id,
+      cancelled_at: new Date(),
     });
     if (!result.success) return res.status(404).json(result);
     res.json(result);

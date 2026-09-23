@@ -1,5 +1,125 @@
 const db = require("../config/db");
 
+function buildResponse(data, message = "success", statusCode = 200) {
+  return { data, message, statusCode };
+}
+
+async function getAllFurniture(roomId) {
+  const [rows] = await db.execute(
+    `SELECT id, room_id AS roomId, title, image, is_extra AS isExtra
+     FROM furnitures
+     ${roomId ? "WHERE room_id = ?" : ""}
+     ORDER BY room_id, id`,
+    roomId ? [roomId] : [],
+  );
+  return buildResponse(rows);
+}
+
+async function createFurniture(data) {
+  const roomId = data.roomId || data.room_id;
+  const title = String(data.title || "").trim();
+  if (!roomId || !title)
+    return buildResponse(null, "ต้องระบุห้องและชื่อ furniture", 400);
+
+  const [result] = await db.execute(
+    `INSERT INTO furnitures (room_id, title, image, is_extra)
+     VALUES (?, ?, ?, ?)`,
+    [roomId, title, data.image || null, data.isExtra ? 1 : 0],
+  );
+  return buildResponse({ id: result.insertId }, "เพิ่ม furniture สำเร็จ", 201);
+}
+
+async function updateFurniture(id, data) {
+  const fields = [];
+  const values = [];
+  if (data.roomId !== undefined || data.room_id !== undefined) {
+    fields.push("room_id = ?");
+    values.push(data.roomId ?? data.room_id);
+  }
+  if (data.title !== undefined) {
+    const title = String(data.title).trim();
+    if (!title) return buildResponse(null, "ชื่อ furniture ต้องไม่ว่าง", 400);
+    fields.push("title = ?");
+    values.push(title);
+  }
+  if (data.image !== undefined) {
+    fields.push("image = ?");
+    values.push(data.image || null);
+  }
+  if (data.isExtra !== undefined) {
+    fields.push("is_extra = ?");
+    values.push(data.isExtra ? 1 : 0);
+  }
+  if (!fields.length) return buildResponse(null, "ไม่มีข้อมูลสำหรับแก้ไข", 400);
+
+  values.push(id);
+  const [result] = await db.execute(
+    `UPDATE furnitures SET ${fields.join(", ")} WHERE id = ?`,
+    values,
+  );
+  if (!result.affectedRows) return buildResponse(null, "ไม่พบ furniture", 404);
+  return buildResponse({ id: Number(id) }, "แก้ไข furniture สำเร็จ");
+}
+
+async function deleteFurniture(id) {
+  const [references] = await db.execute(
+    "SELECT COUNT(*) AS count FROM furniture_inspections WHERE furniture_id = ?",
+    [id],
+  );
+  if (references[0].count > 0) {
+    return buildResponse(
+      null,
+      "ลบไม่ได้ เนื่องจากมีประวัติการตรวจ furniture นี้แล้ว",
+      409,
+    );
+  }
+
+  const [result] = await db.execute("DELETE FROM furnitures WHERE id = ?", [
+    id,
+  ]);
+  if (!result.affectedRows) return buildResponse(null, "ไม่พบ furniture", 404);
+  return buildResponse({ id: Number(id) }, "ลบ furniture สำเร็จ");
+}
+
+async function confirmUserCondition(bookingId, userId) {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [bookings] = await connection.execute(
+      `SELECT id FROM bookings
+       WHERE id = ? AND user_id = ?
+         AND status NOT IN ('REJECTED', 'ยกเลิก', 'CHECKED_OUT')
+       LIMIT 1`,
+      [bookingId, userId],
+    );
+    if (!bookings.length) {
+      await connection.rollback();
+      return buildResponse(null, "ไม่พบ booking หรือไม่มีสิทธิ์ยืนยัน", 404);
+    }
+
+    await connection.execute(
+      `UPDATE bookings
+       SET inspection_status = 'USER_CONFIRMED', updated_at = NOW()
+       WHERE id = ?`,
+      [bookingId],
+    );
+    await connection.commit();
+    return buildResponse(
+      {
+        bookingId,
+        inspectionStatus: "USER_CONFIRMED",
+        confirmedAt: new Date(),
+      },
+      "ยืนยันสภาพห้องสำเร็จ",
+    );
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function getFurnitureByRoomAndBooking(roomId, bookingId) {
   const [rows] = await db.query(
     `
@@ -147,7 +267,14 @@ async function createFurnitureInspection(data) {
     );
 
     furnitureId = result.insertId;
-  } else if (data.inspectorRole === "housekeeper" && data.status === "ปกติ") {
+  } else if (
+    ["housekeeper", "แม่บ้าน"].includes(
+      String(data.inspectorRole || "")
+        .trim()
+        .toLowerCase(),
+    ) &&
+    data.status === "ปกติ"
+  ) {
     console.log("🔥 UPDATE FURNITURE IMAGE");
 
     if (inspectionImage) {
@@ -207,6 +334,11 @@ async function createFurnitureInspection(data) {
 }
 
 module.exports = {
+  getAllFurniture,
+  createFurniture,
+  updateFurniture,
+  deleteFurniture,
+  confirmUserCondition,
   getFurnitureByRoomAndBooking,
   createFurnitureInspection,
 };

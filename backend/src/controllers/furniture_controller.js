@@ -2,10 +2,7 @@ const furnitureService = require("../services/furniture_service");
 
 exports.getFurniture = async (req, res) => {
   try {
-    const {
-      roomId,
-      bookingId = "",
-    } = req.query;
+    const { roomId, bookingId = "" } = req.query;
 
     if (!roomId) {
       return res.status(400).json({
@@ -15,21 +12,11 @@ exports.getFurniture = async (req, res) => {
       });
     }
 
-    const result =
-      await furnitureService.getFurniture(
-        roomId,
-        bookingId,
-      );
+    const result = await furnitureService.getFurniture(roomId, bookingId);
 
-    return res
-      .status(200)
-      .json(result);
-
+    return res.status(200).json(result);
   } catch (error) {
-    console.error(
-      "getFurniture failed:",
-      error,
-    );
+    console.error("getFurniture failed:", error);
 
     return res.status(500).json({
       message: "getFurniture failed",
@@ -39,7 +26,6 @@ exports.getFurniture = async (req, res) => {
     });
   }
 };
-
 
 exports.submitReport = async (req, res) => {
   try {
@@ -70,29 +56,21 @@ exports.submitReport = async (req, res) => {
         path: file.path,
       });
 
-      files[file.fieldname] =
-        `uploads/furniture/${file.filename}`;
+      files[file.fieldname] = `uploads/furniture/${file.filename}`;
     }
 
     console.log("📸 FILE PATHS:", files);
 
-    const result =
-      await furnitureService.submitReport(
-        items,
-        inspectorId,
-        inspectorRole,
-        files,
-      );
-
-    return res
-      .status(result.statusCode || 201)
-      .json(result);
-
-  } catch (error) {
-    console.error(
-      "submitReport failed:",
-      error,
+    const result = await furnitureService.submitReport(
+      items,
+      inspectorId,
+      inspectorRole,
+      files,
     );
+
+    return res.status(result.statusCode || 201).json(result);
+  } catch (error) {
+    console.error("submitReport failed:", error);
 
     return res.status(500).json({
       message: "submitReport failed",
@@ -103,6 +81,24 @@ exports.submitReport = async (req, res) => {
   }
 };
 
+exports.confirmUserCondition = async (req, res) => {
+  try {
+    const bookingId = req.body.bookingId || req.body.booking_id;
+    if (!bookingId) {
+      return res.status(400).json({ message: "bookingId จำเป็นต้องระบุ" });
+    }
+    const result = await furnitureService.confirmUserCondition(
+      bookingId,
+      req.user.id,
+    );
+    return res.status(result.statusCode || 200).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      message: "confirm furniture condition failed",
+      error: error.message,
+    });
+  }
+};
 
 // const furnitureService = require("../services/furniture_service");
 

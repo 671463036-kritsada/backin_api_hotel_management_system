@@ -34,7 +34,7 @@ async function claimPromotion(userId, promotionId) {
 
   if (
     promotion.usage_limit != null &&
-    promotion.used_count >= promotion.usage_limit
+    promotion.claimed_count >= promotion.usage_limit
   ) {
     return promotionModel.buildResponse(
       null,
@@ -52,6 +52,13 @@ async function claimPromotion(userId, promotionId) {
   }
 
   const result = await promotionModel.claimPromotion(userId, promotionId);
+  if (!result) {
+    return promotionModel.buildResponse(
+      null,
+      "โปรโมชั่นนี้ถูกแจกครบจำนวนแล้ว",
+      400,
+    );
+  }
   return promotionModel.buildResponse(
     { userPromotionId: result.insertId },
     "รับคูปองสำเร็จ",
@@ -220,7 +227,10 @@ async function deletePromotion(id) {
   if (!existing) {
     return promotionModel.buildResponse(null, "ไม่พบโปรโมชั่นนี้", 404);
   }
-  await promotionModel.deletePromotion(id);
+  const result = await promotionModel.deletePromotion(id);
+  if (result.statusCode && result.statusCode >= 400) {
+    return result;
+  }
   return promotionModel.buildResponse({ id }, "ลบโปรโมชั่นสำเร็จ", 200);
 }
 

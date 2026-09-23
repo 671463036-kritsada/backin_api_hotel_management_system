@@ -14,12 +14,13 @@ function buildResponse(data, message = "success", statusCode = 200) {
 async function getActivePromotions() {
   const [rows] = await db.query(
     `SELECT id, code, title, description, image_url, discount_type, discount_value,
-            min_booking_amount, max_discount_amount, usage_limit, used_count,
+            min_booking_amount, max_discount_amount, usage_limit, used_count, claimed_count,
             start_date, end_date, is_active, created_at
      FROM promotions
      WHERE is_active = 1
        AND start_date <= NOW()
        AND end_date >= NOW()
+      AND (usage_limit IS NULL OR claimed_count < usage_limit)
      ORDER BY created_at DESC`,
   );
   return rows;
@@ -28,7 +29,7 @@ async function getActivePromotions() {
 async function getPromotionById(id) {
   const [rows] = await db.query(
     `SELECT id, code, title, description, image_url, discount_type, discount_value,
-            min_booking_amount, max_discount_amount, usage_limit, used_count,
+            min_booking_amount, max_discount_amount, usage_limit, used_count, claimed_count,
             start_date, end_date, is_active, created_at
      FROM promotions
      WHERE id = ?
@@ -49,12 +50,34 @@ async function hasUserClaimed(userId, promotionId) {
 
 // user กดรับคูปอง -> insert เข้า user_promotions
 async function claimPromotion(userId, promotionId) {
-  const [result] = await db.execute(
-    `INSERT INTO user_promotions (user_id, promotion_id, status, received_at)
-     VALUES (?, ?, 'available', NOW())`,
-    [userId, promotionId],
-  );
-  return { insertId: result.insertId };
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.execute(
+      `UPDATE promotions
+       SET claimed_count = claimed_count + 1
+       WHERE id = ? AND is_active = 1
+         AND start_date <= NOW() AND end_date >= NOW()
+         AND (usage_limit IS NULL OR claimed_count < usage_limit)`,
+      [promotionId],
+    );
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return null;
+    }
+    const [insert] = await connection.execute(
+      `INSERT INTO user_promotions (user_id, promotion_id, status, received_at)
+       VALUES (?, ?, 'available', NOW())`,
+      [userId, promotionId],
+    );
+    await connection.commit();
+    return { insertId: insert.insertId };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 // ดึงคูปองที่ user ถืออยู่ (join กับรายละเอียดโปรโมชั่น)
@@ -168,7 +191,7 @@ function buildResponse(data, message = "success", statusCode = 200) {
 async function getAllPromotionsAdmin() {
   const [rows] = await db.query(
     `SELECT id, code, title, description, image_url, discount_type, discount_value,
-            min_booking_amount, max_discount_amount, usage_limit, used_count,
+            min_booking_amount, max_discount_amount, usage_limit, used_count, claimed_count,
             start_date, end_date, is_active, created_at
      FROM promotions
      ORDER BY created_at DESC`,
@@ -201,7 +224,7 @@ async function createPromotion(data, file) {
   const [result] = await db.execute(
     `INSERT INTO promotions
       (code, title, description, image_url, discount_type, discount_value,
-       min_booking_amount, max_discount_amount, usage_limit, used_count,
+      min_booking_amount, max_discount_amount, usage_limit, used_count, claimed_count,
        start_date, end_date, is_active, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NOW())`,
     [
@@ -283,6 +306,18 @@ async function updatePromotion(id, data, file) {
 async function deletePromotion(id) {
   const current = await getPromotionById(id);
   if (!current) return { affectedRows: 0 };
+
+  const [references] = await db.execute(
+    "SELECT COUNT(*) AS count FROM user_promotions WHERE promotion_id = ?",
+    [id],
+  );
+  if (references[0].count > 0) {
+    return buildResponse(
+      null,
+      "ลบโปรโมชั่นไม่ได้ เนื่องจากมีการแจกให้ user แล้ว ให้ปิดใช้งานแทน",
+      409,
+    );
+  }
 
   const [result] = await db.execute(`DELETE FROM promotions WHERE id = ?`, [
     id,

@@ -14,7 +14,6 @@ exports.findUserByName = async (name) => {
   }
 };
 
-
 exports.findUserById = async (id) => {
   const sql = `
     SELECT id, name, email, phone, role, status, address, join_date, created_at
@@ -56,7 +55,6 @@ exports.getUsersNotAllowed = async () => {
   }
 };
 
-
 exports.updateUserProfile = async (id, { name, phone, address }) => {
   const sql = `
     UPDATE users
@@ -86,13 +84,54 @@ exports.updateUserStatus = async (id, status) => {
 };
 
 exports.deleteUser = async (id) => {
+  const [users] = await db.query(
+    `SELECT id, role FROM users WHERE id = ? LIMIT 1`,
+    [id],
+  );
+  if (!users.length) {
+    return { success: false, statusCode: 404, message: "ไม่พบผู้ใช้งาน" };
+  }
+  if (String(users[0].role).toLowerCase() === "admin") {
+    return {
+      success: false,
+      statusCode: 403,
+      message: "ไม่สามารถลบบัญชีผู้ดูแลระบบได้ ให้ระงับการใช้งานแทน",
+    };
+  }
+
+  const [references] = await db.query(
+    `SELECT
+       (SELECT COUNT(*) FROM bookings WHERE user_id = ?) AS bookingsCount,
+       (SELECT COUNT(*) FROM cart WHERE user_id = ?) AS cartCount,
+       (SELECT COUNT(*) FROM user_promotions WHERE user_id = ?) AS couponsCount`,
+    [id, id, id],
+  );
+  const reference = references[0];
+  if (
+    reference.bookingsCount > 0 ||
+    reference.cartCount > 0 ||
+    reference.couponsCount > 0
+  ) {
+    return {
+      success: false,
+      statusCode: 409,
+      message:
+        "ลบไม่ได้ เนื่องจากผู้ใช้นี้มีข้อมูลการจอง ตะกร้า หรือคูปองอยู่ ให้ระงับการใช้งานแทน",
+    };
+  }
+
   const sql = `
     DELETE FROM users
     WHERE id = ?
   `;
   try {
     const [result] = await db.query(sql, [id]);
-    return result;
+    return {
+      success: true,
+      statusCode: 200,
+      message: "User Deleted",
+      data: result,
+    };
   } catch (err) {
     throw new Error(`deleteUser failed: ${err.message}`);
   }

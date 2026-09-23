@@ -4,6 +4,15 @@ const roomModel = require("../models/room_model");
 const checkinModel = require("../models/checkin_model");
 const { createPromptPayPayload } = require("../utils/promptpay_qr");
 
+function toSqlDate(value) {
+  if (!value) return null;
+  const datePart = String(value).match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (datePart) return datePart;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
 async function createBooking(userId, customerName, data) {
   data.user_id = userId;
   data.customer_name = customerName;
@@ -53,8 +62,8 @@ async function createCartBooking(userId, customerName, data) {
 
   for (const item of data.items) {
     const roomId = item.roomId || item.room_id;
-    const checkIn = item.checkInDate || item.check_in;
-    const checkOut = item.checkOutDate || item.check_out;
+    const checkIn = toSqlDate(item.checkInDate || item.check_in);
+    const checkOut = toSqlDate(item.checkOutDate || item.check_out);
     if (!roomId || !checkIn || !checkOut) {
       return {
         success: false,
@@ -137,15 +146,8 @@ async function updateBooking(id, data) {
   return { success: true, data: booking };
 }
 
-async function deleteBooking(id) {
-  const booking = await bookingModel.getBookingById(id);
-  if (!booking) return { success: false, message: "booking not found" };
-
-  const result = await bookingModel.deleteBooking(id);
-  if (result.affectedRows === 0)
-    return { success: false, message: "booking not found" };
-
-  return { success: true, data: { id } };
+async function deleteBooking(id, requester) {
+  return bookingModel.cancelBooking(id, requester);
 }
 
 module.exports = {

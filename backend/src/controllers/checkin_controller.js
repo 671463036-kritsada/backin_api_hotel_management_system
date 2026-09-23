@@ -39,7 +39,9 @@ exports.getPendingCheckins = async (req, res) => {
     const result = await checkinService.getPendingCheckins();
     res.status(result.statusCode || 200).json(result);
   } catch (error) {
-    res.status(500).json({ message: "getPendingCheckins failed", error: error.message });
+    res
+      .status(500)
+      .json({ message: "getPendingCheckins failed", error: error.message });
   }
 };
 
@@ -48,17 +50,31 @@ exports.approveCheckin = async (req, res) => {
     const result = await checkinService.approveCheckin(req.params.id);
     res.status(result.statusCode || 200).json(result);
   } catch (error) {
-    res.status(500).json({ message: "approveCheckin failed", error: error.message });
+    res
+      .status(500)
+      .json({ message: "approveCheckin failed", error: error.message });
   }
 };
 
 exports.rejectCheckin = async (req, res) => {
   try {
-    const { reason } = req.body;
-    const result = await checkinService.rejectCheckin(req.params.id, reason);
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        message: "กรุณาระบุเหตุผลการปฏิเสธการเข้าพัก",
+      });
+    }
+    const result = await checkinService.rejectCheckin(
+      req.params.id,
+      reason,
+      req.user.id,
+    );
     res.status(result.statusCode || 200).json(result);
   } catch (error) {
-    res.status(500).json({ message: "rejectCheckin failed", error: error.message });
+    res
+      .status(500)
+      .json({ message: "rejectCheckin failed", error: error.message });
   }
 };
 

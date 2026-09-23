@@ -1,4 +1,3 @@
-
 const db = require("../config/db");
 
 async function createCheckIn(data) {
@@ -28,19 +27,23 @@ async function createCheckIn(data) {
 }
 
 async function getCheckIns() {
-  const [rows] = await db.query(`SELECT * FROM checkins ORDER BY created_at DESC`);
+  const [rows] = await db.query(
+    `SELECT * FROM checkins ORDER BY created_at DESC`,
+  );
   return rows;
 }
 
 async function getPendingCheckins() {
   const [rows] = await db.query(
-    `SELECT * FROM checkins WHERE status = 'pending' ORDER BY created_at DESC`
+    `SELECT * FROM checkins WHERE status = 'pending' ORDER BY created_at DESC`,
   );
   return rows;
 }
 
 async function getCheckInById(id) {
-  const [rows] = await db.query(`SELECT * FROM checkins WHERE id = ? LIMIT 1`, [id]);
+  const [rows] = await db.query(`SELECT * FROM checkins WHERE id = ? LIMIT 1`, [
+    id,
+  ]);
   return rows[0];
 }
 // เพิ่มใหม่: หา checkin record จาก booking_id (เพราะ Flutter ส่งมาแค่ bookingId)
@@ -52,10 +55,21 @@ async function getCheckInByBookingId(bookingId) {
   return rows[0];
 }
 
-async function updateCheckinStatus(id, status) {
+async function updateCheckinStatus(id, status, audit = {}) {
   const [result] = await db.execute(
-    `UPDATE checkins SET status = ? WHERE id = ?`,
-    [status, id],
+    `UPDATE checkins
+     SET status = ?,
+         reject_reason = COALESCE(?, reject_reason),
+         rejected_by = COALESCE(?, rejected_by),
+         rejected_at = CASE WHEN ? IS NOT NULL THEN NOW() ELSE rejected_at END
+     WHERE id = ?`,
+    [
+      status,
+      audit.rejectReason || null,
+      audit.rejectedBy || null,
+      audit.rejectReason || null,
+      id,
+    ],
   );
   return result;
 }
@@ -73,8 +87,8 @@ module.exports = {
   createCheckIn,
   getCheckIns,
   getPendingCheckins,
-   getCheckInByBookingId,   
+  getCheckInByBookingId,
   getCheckInById,
   updateCheckinStatus,
-  checkOutCheckin,  
+  checkOutCheckin,
 };

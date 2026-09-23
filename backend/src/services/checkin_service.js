@@ -101,18 +101,23 @@ async function approveCheckin(id) {
   await checkinModel.updateCheckinStatus(id, "checked_in");
 
   if (checkin.booking_id) {
-    await bookingModel.updateCheckInStatus(checkin.booking_id, { room_key: roomKey });
+    await bookingModel.updateCheckInStatus(checkin.booking_id, {
+      room_key: roomKey,
+    });
   }
 
   const updated = await checkinModel.getCheckInById(id);
   return buildResponse(updated, "checkin approved");
 }
 
-async function rejectCheckin(id, reason) {
+async function rejectCheckin(id, reason, rejectedBy) {
   const checkin = await checkinModel.getCheckInById(id);
   if (!checkin) return buildResponse(null, "ไม่พบรายการเช็คอิน", 404);
 
-  await checkinModel.updateCheckinStatus(id, "rejected");
+  await checkinModel.updateCheckinStatus(id, "rejected", {
+    rejectReason: reason,
+    rejectedBy,
+  });
   const updated = await checkinModel.getCheckInById(id);
   return buildResponse(updated, "checkin rejected");
 }

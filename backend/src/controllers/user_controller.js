@@ -32,7 +32,7 @@ exports.getMyProfile = async (req, res) => {
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     console.error(err);
-    
+
     res.status(500).json({ success: false, message: "Server Error" });
     if (err.message && err.message.includes("Data too long")) {
       return res.status(400).json({
@@ -159,10 +159,12 @@ exports.deleteUser = async (req, res) => {
         .status(400)
         .json({ success: false, message: "id จำเป็นต้องระบุ" });
     }
-    const result = await userService.deleteUser(id);
-    res.status(200).json({ success: true, data: result });
+    const result = await userService.deleteUser(id, req.user.id);
+    res.status(result.statusCode || 200).json(result);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res
+      .status(err.statusCode || 500)
+      .json({ success: false, message: err.message || "Server Error" });
   }
 };

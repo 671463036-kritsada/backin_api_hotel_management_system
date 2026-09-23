@@ -95,7 +95,7 @@ exports.getRooms = async () => {
       FROM rooms r
       LEFT JOIN bookings b
         ON b.room_id = r.id
-        AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+        AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
         AND b.check_in <= CURDATE()
         AND b.check_out > CURDATE()
       LEFT JOIN room_images ri ON ri.room_id = r.id
@@ -133,7 +133,7 @@ exports.getRoomById = async (id) => {
       FROM rooms r
       LEFT JOIN bookings b
         ON b.room_id = r.id
-        AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+        AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
         AND b.check_in <= CURDATE()
         AND b.check_out > CURDATE()
       LEFT JOIN room_images ri ON ri.room_id = r.id
@@ -176,7 +176,7 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
         SELECT b.room_id
         FROM bookings b
         WHERE b.room_id IS NOT NULL
-          AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED')
+          AND b.status NOT IN ('ยกเลิก', 'CHECKED_OUT', 'REJECTED', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
           AND b.check_in < ?
           AND b.check_out > ?
       )
@@ -209,7 +209,7 @@ exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
      SELECT COUNT(*) AS count
     FROM bookings
     WHERE room_id = ?
-      AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT')
+      AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
       AND check_in < ?
       AND check_out > ?
     `,
@@ -381,6 +381,26 @@ exports.deleteRoom = async (id) => {
     const currentResp = await exports.getRoomById(id);
     if (!currentResp.data) {
       return buildResponse(null, "room not found", 404);
+    }
+
+    const [references] = await db.execute(
+      `SELECT
+         (SELECT COUNT(*) FROM bookings WHERE room_id = ?) AS bookingCount,
+         (SELECT COUNT(*) FROM cart WHERE room_id = ?) AS cartCount,
+         (SELECT COUNT(*) FROM furnitures WHERE room_id = ?) AS furnitureCount`,
+      [id, id, id],
+    );
+    const reference = references[0];
+    if (
+      reference.bookingCount > 0 ||
+      reference.cartCount > 0 ||
+      reference.furnitureCount > 0
+    ) {
+      return buildResponse(
+        null,
+        "ลบห้องไม่ได้ เนื่องจากมี booking, cart หรือ furniture อ้างอิงอยู่",
+        409,
+      );
     }
 
     await deleteAllRoomImages(id); // ลบรูปทั้งหมดออกจาก disk + room_images ก่อน
