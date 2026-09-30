@@ -22,25 +22,18 @@ async function createCheckIn(data, userId) {
     }
 
     const baseAmount = Number(booking.remaining_amount) || 0;
-    let discountAmount = 0;
-    let userPromotionId =
+    const userPromotionId =
       data.userPromotionId || data.user_promotion_id || null;
-    let promotionId = null;
 
-    if (userPromotionId) {
-      const couponResult = await promotionService.validateAndCalculateDiscount(
-        userPromotionId,
-        userId,
-        baseAmount,
-      );
-      if (!couponResult.valid) {
-        return buildResponse(null, couponResult.message, 400);
-      }
-      discountAmount = couponResult.discountAmount;
-      promotionId = couponResult.promotionId;
+    const couponResult = await promotionService.resolveAmountDue(
+      userPromotionId,
+      userId,
+      baseAmount,
+    );
+    if (!couponResult.valid) {
+      return buildResponse(null, couponResult.message, 400);
     }
-
-    const amountPaid = Math.max(baseAmount - discountAmount, 0);
+    const { discountAmount, amountDue: amountPaid, promotionId } = couponResult;
 
     const checkinData = {
       ...data,

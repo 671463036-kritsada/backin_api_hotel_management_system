@@ -35,7 +35,12 @@ async function getCheckIns() {
 
 async function getPendingCheckins() {
   const [rows] = await db.query(
-    `SELECT * FROM checkins WHERE status = 'pending' ORDER BY created_at DESC`,
+    `SELECT c.*, p.code AS promotion_code, p.title AS promotion_title
+     FROM checkins c
+     LEFT JOIN user_promotions up ON up.id = c.user_promotion_id
+     LEFT JOIN promotions p ON p.id = up.promotion_id
+     WHERE c.status = 'pending'
+     ORDER BY c.created_at DESC`,
   );
   return rows;
 }

@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const crypto = require("crypto");
 const { generateBookingId } = require("../utils/id_generator");
 
 function toSqlDate(value) {
@@ -11,7 +12,13 @@ function toSqlDate(value) {
 }
 
 async function getPendingBookings() {
-  const sql = `SELECT * FROM bookings WHERE status = 'PENDING' ORDER BY created_at DESC`;
+  const sql = `
+    SELECT b.*, r.name AS room_name, r.room_type AS room_type
+    FROM bookings b
+    LEFT JOIN rooms r ON r.id = b.room_id
+    WHERE b.status = 'PENDING'
+    ORDER BY b.cart_group_id, b.created_at DESC
+  `;
   const [rows] = await db.query(sql);
   return rows;
 }
@@ -88,6 +95,8 @@ async function createCartBookings(data) {
   const connection = await db.getConnection();
   const bookingIds = [];
   let totalPrice = 0;
+  // กลุ่ม booking ทุกห้องที่จ่ายเงินคราวเดียวกัน ให้ admin เห็นเป็นออเดอร์เดียวกัน
+  const cartGroupId = crypto.randomUUID();
 
   try {
     await connection.beginTransaction();
@@ -159,8 +168,8 @@ async function createCartBookings(data) {
           amount, paid_amount, remaining_amount,
           phone, email, bank_account, address, status, payment_status,
           slip_url, check_in_status, check_out_status, inspection_status,
-          room_key, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          room_key, cart_group_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           bookingId,
           data.user_id,
@@ -190,6 +199,7 @@ async function createCartBookings(data) {
           "NOT_CHECKED_OUT",
           "PENDING",
           null,
+          cartGroupId,
         ],
       );
       bookingIds.push(bookingId);
@@ -219,6 +229,68 @@ async function getBookings() {
   const sql = `SELECT * FROM bookings ORDER BY created_at DESC`;
   const [rows] = await db.query(sql);
   return rows;
+}
+
+// คำนวณราคารวม/มัดจำจากตะกร้าล่วงหน้า (ก่อนสร้าง booking จริง) โดยอิงราคาห้อง/เตียงเสริมจาก DB เท่านั้น
+// ใช้สำหรับสร้าง QR ตัวอย่างให้ผู้ใช้จ่ายเงิน ป้องกันไม่ให้ client ส่งราคาที่ปลอมมาเอง
+async function calculateCartTotal(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("ไม่พบห้องพักในตะกร้า");
+  }
+
+  let totalPrice = 0;
+
+  for (const item of items) {
+    const roomId = item.roomId || item.room_id;
+    const checkIn = toSqlDate(item.checkInDate || item.check_in);
+    const checkOut = toSqlDate(item.checkOutDate || item.check_out);
+    const children = Number(item.childCount ?? item.child_count ?? 0);
+    const extraBedTypeId =
+      item.extraBedTypeId ?? item.extra_bed_type_id ?? null;
+    const extraBedQuantity = Number(
+      item.extraBedQuantity ?? item.extra_bed_quantity ?? 0,
+    );
+
+    if (!roomId || !checkIn || !checkOut) {
+      throw new Error("กรุณาระบุห้อง วันที่เช็คอิน และเช็คเอาท์ให้ครบทุกห้อง");
+    }
+
+    const nights = Math.ceil(
+      (new Date(checkOut) - new Date(checkIn)) / (24 * 60 * 60 * 1000),
+    );
+    if (!Number.isFinite(nights) || nights <= 0) {
+      throw new Error("วันที่เช็คเอาท์ต้องอยู่หลังวันที่เช็คอิน");
+    }
+
+    const [roomRows] = await db.execute(
+      `SELECT price FROM rooms WHERE id = ? LIMIT 1`,
+      [roomId],
+    );
+    if (roomRows.length === 0) throw new Error(`ไม่พบห้องพัก ${roomId}`);
+
+    let itemTotalPrice = Number(roomRows[0].price) * nights;
+
+    if (extraBedTypeId !== null && extraBedQuantity > 0) {
+      const [bedRows] = await db.execute(
+        `SELECT price FROM extra_bed_types WHERE id = ? AND is_active = 1 LIMIT 1`,
+        [extraBedTypeId],
+      );
+      if (bedRows.length === 0)
+        throw new Error("ไม่พบประเภทเตียงเสริมที่ใช้งานอยู่");
+      if (children < 1 || extraBedQuantity > children) {
+        throw new Error("จำนวนเตียงเสริมต้องไม่เกินจำนวนเด็ก");
+      }
+      itemTotalPrice += Number(bedRows[0].price) * extraBedQuantity * nights;
+    }
+
+    totalPrice += itemTotalPrice;
+  }
+
+  return {
+    totalPrice,
+    depositAmount: totalPrice * 0.3,
+    remainingAmount: totalPrice * 0.7,
+  };
 }
 
 async function getBookingsByUserId(userId) {
@@ -458,6 +530,7 @@ async function updateInspectionStatus(id, status) {
 module.exports = {
   createBooking,
   createCartBookings,
+  calculateCartTotal,
   getBookings,
   getBookingById,
   getBookingsByUserId,

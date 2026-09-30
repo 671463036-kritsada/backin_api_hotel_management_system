@@ -143,6 +143,33 @@ async function validateAndCalculateDiscount(
   };
 }
 
+// รวม validate + คำนวณยอดที่ต้องจ่ายจริงไว้ที่เดียว กันจุดคำนวณ baseAmount - discountAmount กระจายซ้ำหลายที่
+// ไม่มีคูปอง (userPromotionId ว่าง) ให้ถือว่ายอดที่ต้องจ่าย = baseAmount เต็มจำนวน
+async function resolveAmountDue(userPromotionId, userId, baseAmount) {
+  if (!userPromotionId) {
+    return {
+      valid: true,
+      discountAmount: 0,
+      amountDue: baseAmount,
+      promotionId: null,
+    };
+  }
+
+  const result = await validateAndCalculateDiscount(
+    userPromotionId,
+    userId,
+    baseAmount,
+  );
+  if (!result.valid) return result;
+
+  return {
+    valid: true,
+    discountAmount: result.discountAmount,
+    amountDue: Math.max(baseAmount - result.discountAmount, 0),
+    promotionId: result.promotionId,
+  };
+}
+
 // เรียกหลัง checkin/booking สำเร็จแล้ว เพื่อ mark คูปองว่าถูกใช้ไปแล้ว
 async function markCouponUsed(userPromotionId, promotionId, bookingId) {
   return promotionModel.markCouponUsed(userPromotionId, promotionId, bookingId);
@@ -241,6 +268,7 @@ module.exports = {
   claimPromotion,
   getUserCoupons,
   validateAndCalculateDiscount,
+  resolveAmountDue,
   markCouponUsed,
   grantPromotionToUser,
   createPromotion, // เพิ่ม

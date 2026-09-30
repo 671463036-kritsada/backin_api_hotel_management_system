@@ -24,6 +24,7 @@ const reports = require("./routes/report_routes");
 const feedbacks = require("./routes/feedback_routes");
 const overview = require("./routes/overview_routes");
 const maintenance = require("./routes/maintenance_routes");
+const paymentRoutes = require("./routes/payment_routes");
 
 const {
   autoCheckoutExpiredBookings,
@@ -70,6 +71,7 @@ app.use("/api/furniture", furnitureRoutes);
 app.use("/api/furniture/admin", furnitureAdminRoutes);
 app.use("/api/bookings-form", bookingsRoutes);
 app.use("/api/checkin", checkinRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/housekeeper", houskeeperRoutes);
 app.use("/api/housekeeper/issues", houskeeperIssuesRoutes);
 app.use("/api/auth", authRoutes);

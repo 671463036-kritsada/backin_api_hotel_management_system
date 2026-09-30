@@ -71,6 +71,9 @@ async function claimPromotion(userId, promotionId) {
       [userId, promotionId],
     );
     await connection.commit();
+    console.log("Promotion claimed successfully: ", {
+      insertId: insert.insertId,
+    });
     return { insertId: insert.insertId };
   } catch (error) {
     await connection.rollback();
