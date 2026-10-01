@@ -85,6 +85,9 @@ exports.getRooms = async () => {
         r.name,
         r.description,
         r.price AS pricePerNight,
+        r.building,
+        r.bed_type AS bedType,
+        r.capacity,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         CASE
@@ -123,6 +126,9 @@ exports.getRoomById = async (id) => {
         r.name,
         r.description,
         r.price AS pricePerNight,
+        r.building,
+        r.bed_type AS bedType,
+        r.capacity,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         CASE
@@ -166,6 +172,9 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
         r.name,
         r.description,
         r.price AS pricePerNight,
+        r.building,
+        r.bed_type AS bedType,
+        r.capacity,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         'ว่าง' AS status,
@@ -269,6 +278,9 @@ exports.createRoom = async (data, files) => {
     const name = data.name || data.roomName || null;
     const description = data.description ?? null;
     const price = Number(data.pricePerNight ?? data.price ?? 0);
+    const building = Number(data.building ?? 1) || 1;
+    const bedType = data.bedType || data.bed_type || "เตียงเดี่ยว";
+    const capacity = Number(data.capacity ?? 2) || 2;
     const bank = data.bank ?? null;
 
     if (!name || !String(name).trim()) {
@@ -286,10 +298,10 @@ exports.createRoom = async (data, files) => {
 
     await db.execute(
       `
-      INSERT INTO rooms (id, room_type, name, description, price)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO rooms (id, room_type, name, description, price, building, bed_type, capacity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [id, roomType, name, description, price],
+      [id, roomType, name, description, price, building, bedType, capacity],
     );
 
     // เซฟรูปหลายไฟล์ แล้ว insert เข้า room_images
@@ -333,6 +345,18 @@ exports.updateRoom = async (id, data, files) => {
       }
       fields.push("price = ?");
       params.push(price);
+    }
+    if (data.building !== undefined) {
+      fields.push("building = ?");
+      params.push(Number(data.building) || 1);
+    }
+    if (data.bedType !== undefined || data.bed_type !== undefined) {
+      fields.push("bed_type = ?");
+      params.push(data.bedType ?? data.bed_type);
+    }
+    if (data.capacity !== undefined) {
+      fields.push("capacity = ?");
+      params.push(Number(data.capacity) || 2);
     }
 
     // ถ้ามีการอัปโหลดรูปใหม่ -> ลบรูปเก่าทั้งชุด แล้วเซฟรูปใหม่แทน

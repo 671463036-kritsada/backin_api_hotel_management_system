@@ -1,7 +1,7 @@
 const promotionModel = require("../models/promotion_model");
 
-async function getActivePromotions() {
-  const data = await promotionModel.getActivePromotions();
+async function getActivePromotions(userId) {
+  const data = await promotionModel.getActivePromotions(userId);
   return promotionModel.buildResponse(data);
 }
 

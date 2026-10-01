@@ -3,7 +3,7 @@ const promotionService = require("../services/promotion_service");
 
 exports.getActivePromotions = async (req, res) => {
   try {
-    const result = await promotionService.getActivePromotions();
+    const result = await promotionService.getActivePromotions(req.user?.id);
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({

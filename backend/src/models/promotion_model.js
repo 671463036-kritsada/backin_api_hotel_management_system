@@ -11,8 +11,20 @@ function buildResponse(data, message = "success", statusCode = 200) {
 }
 
 // ดึงโปรโมชั่นทั้งหมดที่ยัง active และอยู่ในช่วงเวลาที่ใช้ได้
-async function getActivePromotions() {
-  const [rows] = await db.query(
+async function getActivePromotions(userId) {
+  const params = [];
+  let claimedFilter = "";
+  if (userId != null) {
+    claimedFilter = `
+      AND NOT EXISTS (
+        SELECT 1
+        FROM user_promotions up
+        WHERE up.user_id = ? AND up.promotion_id = promotions.id
+      )`;
+    params.push(userId);
+  }
+
+  const [rows] = await db.execute(
     `SELECT id, code, title, description, image_url, discount_type, discount_value,
             min_booking_amount, max_discount_amount, usage_limit, used_count, claimed_count,
             start_date, end_date, is_active, created_at
@@ -20,8 +32,10 @@ async function getActivePromotions() {
      WHERE is_active = 1
        AND start_date <= NOW()
        AND end_date >= NOW()
-      AND (usage_limit IS NULL OR claimed_count < usage_limit)
+       AND (usage_limit IS NULL OR claimed_count < usage_limit)
+       ${claimedFilter}
      ORDER BY created_at DESC`,
+    params,
   );
   return rows;
 }

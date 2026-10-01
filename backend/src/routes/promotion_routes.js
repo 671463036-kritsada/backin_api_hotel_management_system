@@ -1,7 +1,10 @@
 // promotion_routes.js
 const express = require("express");
 const promotionController = require("../controllers/promotion_controller");
-const { authMiddleware } = require("../middleware/auth_middleware");
+const {
+  authMiddleware,
+  optionalAuthMiddleware,
+} = require("../middleware/auth_middleware");
 const { isAdmin } = require("../middleware/role_middleware");
 
 const uploadPromotionImage = require("../middleware/upload_room_image");
@@ -12,11 +15,19 @@ const router = express.Router();
 router.get("/my-coupons", authMiddleware, promotionController.getMyCoupons);
 
 // Admin: ดูโปรโมชั่นทั้งหมด (รวมปิด/หมดอายุ) — ต้องอยู่ก่อน "/:id"
-router.get("/admin/all", authMiddleware, isAdmin, promotionController.getAllPromotionsAdmin);
-
+router.get(
+  "/admin/all",
+  authMiddleware,
+  isAdmin,
+  promotionController.getAllPromotionsAdmin,
+);
 
 // Public: ดูรายการโปรโมชั่นทั้งหมด/รายละเอียด (ไม่ต้อง login ก็ดูได้)
-router.get("/", promotionController.getActivePromotions);
+router.get(
+  "/",
+  optionalAuthMiddleware,
+  promotionController.getActivePromotions,
+);
 router.get("/:id", promotionController.getPromotionById);
 
 // User: กดรับคูปอง
@@ -29,7 +40,6 @@ router.post(
   isAdmin,
   promotionController.grantPromotion,
 );
-
 
 // Admin: CRUD
 router.post(
@@ -46,7 +56,11 @@ router.put(
   uploadPromotionImage.single("image"),
   promotionController.updatePromotion,
 );
-router.delete("/:id", authMiddleware, isAdmin, promotionController.deletePromotion);
-
+router.delete(
+  "/:id",
+  authMiddleware,
+  isAdmin,
+  promotionController.deletePromotion,
+);
 
 module.exports = router;

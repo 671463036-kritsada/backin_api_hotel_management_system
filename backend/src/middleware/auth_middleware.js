@@ -23,6 +23,28 @@ exports.authMiddleware = (req, res, next) => {
   }
 };
 
+exports.optionalAuthMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return next();
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid authorization format",
+    });
+  }
+
+  try {
+    req.user = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token",
+    });
+  }
+};
+
 exports.isAdmin = (req, res, next) => {
   const role = String(req.user?.role || "").toLowerCase();
 
@@ -49,13 +71,10 @@ exports.isHousekeeper = (req, res, next) => {
   next();
 };
 
-
 exports.isUserOrHousekeeper = (req, res, next) => {
   const role = String(req.user?.role || "").toLowerCase();
 
-  if (role !== "user" &&
-      role !== "housekeeper" &&
-      role !== "แม่บ้าน") {
+  if (role !== "user" && role !== "housekeeper" && role !== "แม่บ้าน") {
     return res.status(403).json({
       success: false,
       message: "Forbidden",
@@ -63,4 +82,4 @@ exports.isUserOrHousekeeper = (req, res, next) => {
   }
 
   next();
-}
+};
