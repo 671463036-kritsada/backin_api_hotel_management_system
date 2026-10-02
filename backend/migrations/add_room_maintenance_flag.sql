@@ -1,0 +1,2 @@
+ALTER TABLE rooms
+  ADD COLUMN is_under_maintenance TINYINT(1) NOT NULL DEFAULT 0;

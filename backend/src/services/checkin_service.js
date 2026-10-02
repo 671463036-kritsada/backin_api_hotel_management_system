@@ -1,6 +1,7 @@
 const fs = require("fs");
 const checkinModel = require("../models/checkin_model");
 const bookingModel = require("../models/booking_model");
+const roomModel = require("../models/room_model");
 const promotionService = require("../services/promotion_service");
 
 const { generateRoomKey } = require("../utils/room_key_generator");
@@ -88,6 +89,20 @@ async function getPendingCheckins() {
 async function approveCheckin(id) {
   const checkin = await checkinModel.getCheckInById(id);
   if (!checkin) return buildResponse(null, "ไม่พบรายการเช็คอิน", 404);
+
+  if (checkin.booking_id) {
+    const booking = await bookingModel.getBookingById(checkin.booking_id);
+    if (!booking) return buildResponse(null, "ไม่พบข้อมูลการจอง", 404);
+
+    const roomReady = await roomModel.isRoomReadyForCheckIn(booking.room_id);
+    if (!roomReady) {
+      return buildResponse(
+        null,
+        "ห้องยังไม่พร้อมรับผู้เข้าพัก กรุณารอให้แม่บ้านทำความสะอาดเสร็จก่อน",
+        409,
+      );
+    }
+  }
 
   const roomKey = generateRoomKey();
 

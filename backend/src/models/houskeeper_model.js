@@ -9,7 +9,16 @@ function buildResponse(data, message = "success", statusCode = 200) {
 }
 
 function normalizeCleaningStatus(status) {
-  const value = String(status || "").trim().toLowerCase();
+  const value = String(status || "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    value.includes("รอทำความสะอาด") ||
+    value.includes("ยังไม่ได้ทำความสะอาด")
+  ) {
+    return "รอทำความสะอาด";
+  }
 
   if (value.includes("เสร็จ") || value.includes("complete")) {
     return "ทำความสะอาดเสร็จสิ้น";
@@ -44,6 +53,7 @@ async function getHousekeeperData() {
       r.id AS roomNo,
       COALESCE(NULLIF(r.building, 0), 1) AS building,
       r.cleaning_status AS cleaningStatus,
+      r.is_under_maintenance AS isUnderMaintenance,
       r.room_type AS roomType,
       r.name AS roomName,
       r.description,
@@ -51,23 +61,45 @@ async function getHousekeeperData() {
       r.created_at AS createdAt,
       r.updated_at AS updatedAt
     FROM rooms r
+    LEFT JOIN (
+      SELECT
+        room_id,
+        COUNT(*) AS activeStayCount,
+        MAX(do_not_disturb) AS doNotDisturb
+      FROM bookings
+      WHERE status = 'CHECKED_IN'
+        AND check_in_status = 'CHECKED_IN'
+        AND COALESCE(check_out_status, '') <> 'CHECKED_OUT'
+      GROUP BY room_id
+    ) active_stays ON active_stays.room_id = r.id
     ORDER BY
       COALESCE(NULLIF(r.building, 0), 1),
       r.id
   `);
 
-  const data = rows.map((row) => ({
-    roomNo: String(row.roomNo),
-    building: String(row.building || 1),
-    cleaningStatus: normalizeCleaningStatus(row.cleaningStatus),
-    status: normalizeCleaningStatus(row.cleaningStatus),
-    roomType: row.roomType,
-    roomName: row.roomName,
-    description: row.description,
-    price: row.price,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }));
+  const data = rows.map((row) => {
+    const status =
+      Number(row.isUnderMaintenance) === 1
+        ? "ปิดปรับปรุง"
+        : Number(row.activeStayCount) > 0
+          ? Number(row.doNotDisturb) === 1
+            ? "ห้ามรบกวน"
+            : "มีลูกค้าพักอยู่"
+          : normalizeCleaningStatus(row.cleaningStatus);
+
+    return {
+      roomNo: String(row.roomNo),
+      building: String(row.building || 1),
+      cleaningStatus: status,
+      status,
+      roomType: row.roomType,
+      roomName: row.roomName,
+      description: row.description,
+      price: row.price,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  });
 
   return buildResponse(data);
 }
@@ -75,6 +107,7 @@ async function getHousekeeperData() {
 async function updateCleaningStatus(roomNo, cleaningStatus) {
   const allowedStatuses = [
     "ยังไม่ได้ทำความสะอาด",
+    "รอทำความสะอาด",
     "กำลังทำความสะอาด",
     "ทำความสะอาดเสร็จสิ้น",
     "รอตรวจสอบ",
@@ -83,11 +116,7 @@ async function updateCleaningStatus(roomNo, cleaningStatus) {
   ];
 
   if (!allowedStatuses.includes(cleaningStatus)) {
-    return buildResponse(
-      null,
-      "สถานะการทำความสะอาดไม่ถูกต้อง",
-      400
-    );
+    return buildResponse(null, "สถานะการทำความสะอาดไม่ถูกต้อง", 400);
   }
 
   const [result] = await db.query(
@@ -96,7 +125,7 @@ async function updateCleaningStatus(roomNo, cleaningStatus) {
       SET cleaning_status = ?, updated_at = NOW()
       WHERE id = ?
     `,
-    [cleaningStatus, roomNo]
+    [cleaningStatus, roomNo],
   );
 
   if (result.affectedRows === 0) {
@@ -108,7 +137,7 @@ async function updateCleaningStatus(roomNo, cleaningStatus) {
       roomNo,
       cleaningStatus,
     },
-    "อัปเดตสถานะห้องสำเร็จ"
+    "อัปเดตสถานะห้องสำเร็จ",
   );
 }
 

@@ -2,7 +2,10 @@ const db = require("../config/db");
 
 async function getCartByUserId(userId) {
   const [rows] = await db.execute(
-    `SELECT c.*, r.room_type AS room_type, r.price AS price_per_night,
+    `SELECT c.*,
+          DATE_FORMAT(c.check_in, '%Y-%m-%d') AS check_in_date,
+          DATE_FORMAT(c.check_out, '%Y-%m-%d') AS check_out_date,
+          r.room_type AS room_type, r.price AS price_per_night,
           ri.image_url AS image_url,
           e.name AS extra_bed_name,
           e.description AS extra_bed_description,
@@ -16,7 +19,11 @@ async function getCartByUserId(userId) {
      ORDER BY c.created_at ASC`,
     [userId],
   );
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    check_in: row.check_in_date,
+    check_out: row.check_out_date,
+  }));
 }
 
 async function addCartItem(userId, item) {
@@ -52,11 +59,38 @@ async function addCartItem(userId, item) {
 
   const nights = Math.ceil((new Date(checkOut) - new Date(checkIn)) / 86400000);
   const [rooms] = await db.execute(
-    "SELECT price FROM rooms WHERE id = ? LIMIT 1",
+    `
+      SELECT
+        price,
+        is_under_maintenance,
+        cleaning_status
+      FROM rooms
+      WHERE id = ?
+      LIMIT 1
+    `,
     [roomId],
   );
   if (!rooms.length)
     return { success: false, message: `ไม่พบห้องพัก ${roomId}` };
+  if (Number(rooms[0].is_under_maintenance) === 1) {
+    return {
+      success: false,
+      message: `ห้อง ${roomId} ปิดปรับปรุง ไม่สามารถเพิ่มลงตะกร้าได้`,
+    };
+  }
+  const [[arrivalDue]] = await db.execute(
+    `SELECT DATE(LEFT(?, 10)) <= CURDATE() AS arrival_is_due`,
+    [checkIn],
+  );
+  if (
+    Number(arrivalDue.arrival_is_due) === 1 &&
+    rooms[0].cleaning_status !== "ทำความสะอาดเสร็จสิ้น"
+  ) {
+    return {
+      success: false,
+      message: `ห้อง ${roomId} ยังทำความสะอาดไม่เสร็จ ไม่สามารถจองเข้าพักวันนี้ได้`,
+    };
+  }
 
   const roomPrice = Number(rooms[0].price) * nights;
   let extraBedPrice = 0;

@@ -1,4 +1,9 @@
 const maintenanceService = require("../services/maintenance_service");
+const MAINTENANCE_STATUSES = new Set([
+  "รอการตรวจสอบ",
+  "กำลังซ่อม",
+  "ซ่อมเสร็จแล้ว",
+]);
 
 exports.getReports = async (req, res) => {
   try {
@@ -46,40 +51,26 @@ exports.addReport = async (req, res) => {
   }
 };
 
-exports.toggleStatus = async (req, res) => {
+exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    console.log("=== TOGGLE STATUS ===");
-    console.log("id:", id);
-    console.log("status from frontend:", status);
-
-    const STATUS_CYCLE = {
-      'รอการตรวจสอบ': "กำลังซ่อม",
-      'กำลังซ่อม': "ซ่อมเสร็จแล้ว",
-      'ซ่อมเสร็จแล้ว': "รอการตรวจสอบ",
-    };
-
-    const nextStatus = STATUS_CYCLE[status];
-
-    console.log("nextStatus:", nextStatus);
-
-    if (!nextStatus) {
+    if (!MAINTENANCE_STATUSES.has(status)) {
       return res.status(400).json({
         success: false,
         message: `สถานะ "${status}" ไม่ถูกต้อง`,
       });
     }
 
-    const result = await maintenanceService.updateStatus(id, nextStatus);
+    const result = await maintenanceService.updateStatus(id, status);
 
     res.status(200).json({
       success: true,
       data: result,
     });
   } catch (err) {
-    console.error("toggleStatus error:", err);
+    console.error("updateStatus error:", err);
 
     res.status(500).json({
       success: false,

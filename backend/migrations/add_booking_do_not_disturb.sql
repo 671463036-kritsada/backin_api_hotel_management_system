@@ -1,0 +1,2 @@
+ALTER TABLE bookings
+  ADD COLUMN do_not_disturb TINYINT(1) NOT NULL DEFAULT 0;

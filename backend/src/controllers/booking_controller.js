@@ -111,6 +111,26 @@ exports.getBookingById = async (req, res) => {
   }
 };
 
+exports.setDoNotDisturb = async (req, res) => {
+  try {
+    const result = await bookingService.setDoNotDisturb(
+      req.params.id,
+      req.user.id,
+      req.body?.doNotDisturb,
+    );
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(result);
+    }
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "ตั้งค่าห้ามรบกวนไม่สำเร็จ",
+      error: error.message,
+    });
+  }
+};
+
 exports.updateBooking = async (req, res) => {
   try {
     const result = await bookingService.updateBooking(req.params.id, req.body);
@@ -161,7 +181,7 @@ exports.checkIn = async (req, res) => {
   try {
     const bookingId = req.params.id;
     const result = await bookingService.checkIn(bookingId, req.body);
-    res.json(result);
+    res.status(result.statusCode || 200).json(result);
   } catch (error) {
     res.status(500).json({ message: "check-in failed", error: error.message });
   }

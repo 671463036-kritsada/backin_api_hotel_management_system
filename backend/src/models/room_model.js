@@ -88,6 +88,7 @@ exports.getRooms = async () => {
         r.building,
         r.bed_type AS bedType,
         r.capacity,
+        r.is_under_maintenance AS isUnderMaintenance,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         CASE
@@ -129,6 +130,7 @@ exports.getRoomById = async (id) => {
         r.building,
         r.bed_type AS bedType,
         r.capacity,
+        r.is_under_maintenance AS isUnderMaintenance,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         CASE
@@ -175,6 +177,7 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
         r.building,
         r.bed_type AS bedType,
         r.capacity,
+        r.is_under_maintenance AS isUnderMaintenance,
         r.created_at AS createdAt,
         r.updated_at AS updatedAt,
         'ว่าง' AS status,
@@ -189,9 +192,14 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
           AND b.check_in < ?
           AND b.check_out > ?
       )
+      AND r.is_under_maintenance = 0
+      AND (
+        DATE(LEFT(?, 10)) > CURDATE()
+        OR r.cleaning_status = 'ทำความสะอาดเสร็จสิ้น'
+      )
     `;
 
-    const params = [checkOut, checkIn];
+    const params = [checkOut, checkIn, checkIn];
 
     if (roomType) {
       sql += ` AND r.room_type = ?`;
@@ -213,6 +221,27 @@ exports.getAvailableRooms = async ({ checkIn, checkOut, roomType }) => {
 // CHECK ROOM AVAILABLE
 // ==========================================
 exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
+  const [roomRows] = await db.query(
+    `
+      SELECT
+        is_under_maintenance,
+        cleaning_status,
+        DATE(LEFT(?, 10)) <= CURDATE() AS arrival_is_due
+      FROM rooms
+      WHERE id = ?
+    `,
+    [checkIn, roomId],
+  );
+  if (roomRows.length === 0 || Number(roomRows[0].is_under_maintenance) === 1) {
+    return false;
+  }
+  if (
+    Number(roomRows[0].arrival_is_due) === 1 &&
+    roomRows[0].cleaning_status !== "ทำความสะอาดเสร็จสิ้น"
+  ) {
+    return false;
+  }
+
   const [rows] = await db.query(
     `
      SELECT COUNT(*) AS count
@@ -226,6 +255,22 @@ exports.isRoomAvailable = async (roomId, checkIn, checkOut) => {
   );
 
   return rows[0].count === 0;
+};
+
+exports.isRoomReadyForCheckIn = async (roomId) => {
+  const [rows] = await db.query(
+    `
+      SELECT is_under_maintenance, cleaning_status
+      FROM rooms
+      WHERE id = ?
+    `,
+    [roomId],
+  );
+  return (
+    rows.length > 0 &&
+    Number(rows[0].is_under_maintenance) === 0 &&
+    rows[0].cleaning_status === "ทำความสะอาดเสร็จสิ้น"
+  );
 };
 
 exports.getExtraBedTypes = async () => {
@@ -357,6 +402,20 @@ exports.updateRoom = async (id, data, files) => {
     if (data.capacity !== undefined) {
       fields.push("capacity = ?");
       params.push(Number(data.capacity) || 2);
+    }
+    if (data.isUnderMaintenance !== undefined) {
+      const maintenanceValue = data.isUnderMaintenance;
+      if (![true, false, 0, 1, "0", "1"].includes(maintenanceValue)) {
+        return buildResponse(null, "invalid maintenance status", 400);
+      }
+      fields.push("is_under_maintenance = ?");
+      params.push(
+        maintenanceValue === true ||
+          maintenanceValue === 1 ||
+          maintenanceValue === "1"
+          ? 1
+          : 0,
+      );
     }
 
     // ถ้ามีการอัปโหลดรูปใหม่ -> ลบรูปเก่าทั้งชุด แล้วเซฟรูปใหม่แทน

@@ -99,6 +99,19 @@ async function createCartBooking(userId, customerName, data) {
 }
 
 async function checkIn(id, data) {
+  const booking = await bookingModel.getBookingById(id);
+  if (!booking) {
+    return { success: false, statusCode: 404, message: "ไม่พบข้อมูลการจอง" };
+  }
+  const roomReady = await roomModel.isRoomReadyForCheckIn(booking.room_id);
+  if (!roomReady) {
+    return {
+      success: false,
+      statusCode: 409,
+      message:
+        "ห้องยังไม่พร้อมรับผู้เข้าพัก กรุณารอให้แม่บ้านทำความสะอาดเสร็จก่อน",
+    };
+  }
   return bookingModel.updateCheckInStatus(id, data);
 }
 
@@ -132,6 +145,31 @@ async function getBookingById(id) {
   return { success: true, data };
 }
 
+async function setDoNotDisturb(bookingId, userId, enabled) {
+  if (typeof enabled !== "boolean") {
+    return {
+      success: false,
+      statusCode: 400,
+      message: "doNotDisturb ต้องเป็น true หรือ false",
+    };
+  }
+
+  const result = await bookingModel.updateDoNotDisturb(
+    bookingId,
+    userId,
+    enabled,
+  );
+  if (result.affectedRows === 0) {
+    return {
+      success: false,
+      statusCode: 404,
+      message: "ไม่พบรายการเข้าพักที่กำลังใช้งาน",
+    };
+  }
+
+  return { success: true, data: { bookingId, doNotDisturb: enabled } };
+}
+
 async function updateBooking(id, data) {
   const oldBooking = await bookingModel.getBookingById(id);
   if (!oldBooking) return { success: false, message: "booking not found" };
@@ -159,6 +197,7 @@ module.exports = {
   getPendingBookings,
   getMyBookings,
   getBookingById,
+  setDoNotDisturb,
   updateBooking,
   deleteBooking,
 };

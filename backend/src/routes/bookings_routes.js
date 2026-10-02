@@ -32,6 +32,11 @@ router.patch("/:id/cancel", authMiddleware, bookingController.cancelBooking);
 
 router.patch("/:id/checkin", authMiddleware, bookingController.checkIn);
 router.patch("/:id/checkout", authMiddleware, bookingController.checkOut);
+router.patch(
+  "/:id/do-not-disturb",
+  authMiddleware,
+  bookingController.setDoNotDisturb,
+);
 
 router.post("/:id/approve", authMiddleware, bookingController.approveBooking);
 router.post("/:id/reject", authMiddleware, bookingController.rejectBooking);

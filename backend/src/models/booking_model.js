@@ -128,10 +128,31 @@ async function createCartBookings(data) {
       }
 
       const [roomRows] = await connection.execute(
-        `SELECT price FROM rooms WHERE id = ? LIMIT 1`,
-        [roomId],
+        `
+          SELECT
+            price,
+            is_under_maintenance,
+            cleaning_status,
+            DATE(LEFT(?, 10)) <= CURDATE() AS arrival_is_due
+          FROM rooms
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [checkIn, roomId],
       );
       if (roomRows.length === 0) throw new Error(`ไม่พบห้องพัก ${roomId}`);
+      if (Number(roomRows[0].is_under_maintenance) === 1) {
+        throw new Error(`ห้อง ${roomId} ปิดปรับปรุง ไม่สามารถจองได้`);
+      }
+      if (
+        Number(roomRows[0].arrival_is_due) === 1 &&
+        roomRows[0].cleaning_status !== "ทำความสะอาดเสร็จสิ้น"
+      ) {
+        throw new Error(
+          `ห้อง ${roomId} ยังทำความสะอาดไม่เสร็จ ไม่สามารถจองเข้าพักวันนี้ได้`,
+        );
+      }
 
       const roomPrice = Number(roomRows[0].price) * nights;
       let extraBedPrice = 0;
@@ -263,10 +284,13 @@ async function calculateCartTotal(items) {
     }
 
     const [roomRows] = await db.execute(
-      `SELECT price FROM rooms WHERE id = ? LIMIT 1`,
+      `SELECT price, is_under_maintenance FROM rooms WHERE id = ? LIMIT 1`,
       [roomId],
     );
     if (roomRows.length === 0) throw new Error(`ไม่พบห้องพัก ${roomId}`);
+    if (Number(roomRows[0].is_under_maintenance) === 1) {
+      throw new Error(`ห้อง ${roomId} ปิดปรับปรุง ไม่สามารถจองได้`);
+    }
 
     let itemTotalPrice = Number(roomRows[0].price) * nights;
 
@@ -309,6 +333,22 @@ async function getBookingById(id) {
   const sql = `SELECT * FROM bookings WHERE id = ? LIMIT 1`;
   const [rows] = await db.query(sql, [id]);
   return rows[0];
+}
+
+async function updateDoNotDisturb(bookingId, userId, enabled) {
+  const [result] = await db.execute(
+    `
+      UPDATE bookings
+      SET do_not_disturb = ?, updated_at = NOW()
+      WHERE id = ?
+        AND user_id = ?
+        AND status = 'CHECKED_IN'
+        AND check_in_status = 'CHECKED_IN'
+        AND COALESCE(check_out_status, '') <> 'CHECKED_OUT'
+    `,
+    [enabled ? 1 : 0, bookingId, userId],
+  );
+  return result;
 }
 
 async function updateBooking(id, data) {
@@ -488,18 +528,42 @@ async function updateCheckInStatus(id, data = {}) {
 }
 
 async function updateCheckOutStatus(id, status = "CHECKED_OUT") {
-  const sql = `
-    UPDATE bookings
-    SET
-      check_out_status = ?,
-      status = 'CHECKED_OUT',
-      updated_at = NOW()
-    WHERE id = ?
-  `;
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
 
-  const [result] = await db.execute(sql, [status, id]);
+    const [result] = await connection.execute(
+      `
+        UPDATE bookings
+        SET
+          check_out_status = ?,
+          status = 'CHECKED_OUT',
+          updated_at = NOW()
+        WHERE id = ?
+      `,
+      [status, id],
+    );
 
-  return result;
+    if (result.affectedRows > 0) {
+      await connection.execute(
+        `
+          UPDATE rooms r
+          INNER JOIN bookings b ON b.room_id = r.id
+          SET r.cleaning_status = ?, r.updated_at = NOW()
+          WHERE b.id = ?
+        `,
+        ["รอทำความสะอาด", id],
+      );
+    }
+
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function getExpiredCheckedInBookings() {
@@ -534,6 +598,7 @@ module.exports = {
   getBookings,
   getBookingById,
   getBookingsByUserId,
+  updateDoNotDisturb,
   getPendingBookings,
   updateBooking,
   deleteBooking,
