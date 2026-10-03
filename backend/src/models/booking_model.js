@@ -116,17 +116,6 @@ async function createCartBookings(data) {
         (new Date(checkOut) - new Date(checkIn)) / (24 * 60 * 60 * 1000),
       );
 
-      const [availability] = await connection.execute(
-        `SELECT COUNT(*) AS count FROM bookings
-         WHERE room_id = ?
-           AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
-           AND check_in < ? AND check_out > ?`,
-        [roomId, checkOut, checkIn],
-      );
-      if (availability[0].count > 0) {
-        throw new Error(`ห้อง ${roomId} ถูกจองไปแล้วในช่วงวันที่ที่เลือก`);
-      }
-
       const [roomRows] = await connection.execute(
         `
           SELECT
@@ -145,6 +134,20 @@ async function createCartBookings(data) {
       if (Number(roomRows[0].is_under_maintenance) === 1) {
         throw new Error(`ห้อง ${roomId} ปิดปรับปรุง ไม่สามารถจองได้`);
       }
+
+      const [availability] = await connection.execute(
+        `SELECT id FROM bookings
+         WHERE room_id = ?
+           AND status NOT IN ('ยกเลิก', 'REJECTED', 'CHECKED_OUT', 'CANCELLED_BY_USER', 'CANCELLED_BY_ADMIN')
+           AND check_in < ? AND check_out > ?
+         LIMIT 1
+         FOR UPDATE`,
+        [roomId, checkOut, checkIn],
+      );
+      if (availability.length > 0) {
+        throw new Error(`ห้อง ${roomId} ถูกจองไปแล้วในช่วงวันที่ที่เลือก`);
+      }
+
       if (
         Number(roomRows[0].arrival_is_due) === 1 &&
         roomRows[0].cleaning_status !== "ทำความสะอาดเสร็จสิ้น"
