@@ -336,19 +336,43 @@ async function getBookingById(id) {
 }
 
 async function updateDoNotDisturb(bookingId, userId, enabled) {
-  const [result] = await db.execute(
-    `
-      UPDATE bookings
-      SET do_not_disturb = ?, updated_at = NOW()
-      WHERE id = ?
-        AND user_id = ?
-        AND status = 'CHECKED_IN'
-        AND check_in_status = 'CHECKED_IN'
-        AND COALESCE(check_out_status, '') <> 'CHECKED_OUT'
-    `,
-    [enabled ? 1 : 0, bookingId, userId],
-  );
-  return result;
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.execute(
+      `
+        UPDATE bookings
+        SET do_not_disturb = ?, updated_at = NOW()
+        WHERE id = ?
+          AND user_id = ?
+          AND status = 'CHECKED_IN'
+          AND check_in_status = 'CHECKED_IN'
+          AND COALESCE(check_out_status, '') <> 'CHECKED_OUT'
+      `,
+      [enabled ? 1 : 0, bookingId, userId],
+    );
+
+    if (result.affectedRows > 0 && !enabled) {
+      await connection.execute(
+        `
+          UPDATE rooms r
+          INNER JOIN bookings b ON b.room_id = r.id
+          SET r.cleaning_status = 'รอทำความสะอาด', r.updated_at = NOW()
+          WHERE b.id = ?
+        `,
+        [bookingId],
+      );
+    }
+
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function updateBooking(id, data) {

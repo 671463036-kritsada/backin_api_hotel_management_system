@@ -53,6 +53,8 @@ async function getHousekeeperData() {
       r.id AS roomNo,
       COALESCE(NULLIF(r.building, 0), 1) AS building,
       r.cleaning_status AS cleaningStatus,
+      active_stays.activeStayCount,
+      active_stays.doNotDisturb,
       r.is_under_maintenance AS isUnderMaintenance,
       r.room_type AS roomType,
       r.name AS roomName,
@@ -78,20 +80,28 @@ async function getHousekeeperData() {
   `);
 
   const data = rows.map((row) => {
-    const status =
-      Number(row.isUnderMaintenance) === 1
-        ? "ปิดปรับปรุง"
-        : Number(row.activeStayCount) > 0
-          ? Number(row.doNotDisturb) === 1
-            ? "ห้ามรบกวน"
-            : "มีลูกค้าพักอยู่"
-          : normalizeCleaningStatus(row.cleaningStatus);
+    const cleaningStatus = normalizeCleaningStatus(row.cleaningStatus);
+    let status = cleaningStatus;
+
+    if (Number(row.isUnderMaintenance) === 1) {
+      status = "ปิดปรับปรุง";
+    } else if (Number(row.activeStayCount) > 0) {
+      if (Number(row.doNotDisturb) === 1) {
+        status = "ห้ามรบกวน";
+      } else if (
+        cleaningStatus !== "รอทำความสะอาด" &&
+        cleaningStatus !== "กำลังทำความสะอาด"
+      ) {
+        status = "มีลูกค้าพักอยู่";
+      }
+    }
 
     return {
       roomNo: String(row.roomNo),
       building: String(row.building || 1),
       cleaningStatus: status,
       status,
+      hasGuest: Number(row.activeStayCount) > 0,
       roomType: row.roomType,
       roomName: row.roomName,
       description: row.description,
