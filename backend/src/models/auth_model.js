@@ -42,11 +42,11 @@ exports.createUser = async (data, passwordHash) => {
     data.email,
     data.phone || null,
     passwordHash,
-    "User",           // role default
-    "active",         // status default
+    "User", // role default
+    "active", // status default
     data.address || null,
     data.join_date || new Date().toISOString().slice(0, 10),
-    data.bankName || null
+    null,
   ];
 
   const [result] = await db.query(sql, values);
