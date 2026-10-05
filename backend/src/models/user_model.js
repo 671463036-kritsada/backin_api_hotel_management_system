@@ -95,7 +95,7 @@ exports.deleteUser = async (id) => {
     return {
       success: false,
       statusCode: 403,
-      message: "ไม่สามารถลบบัญชีผู้ดูแลระบบได้ ให้ระงับการใช้งานแทน",
+      message: "ไม่สามารถลบบัญชีผู้ดูแลระบบได้",
     };
   }
 

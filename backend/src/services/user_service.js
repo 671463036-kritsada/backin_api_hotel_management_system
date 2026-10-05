@@ -24,8 +24,22 @@ exports.allowUser = async (data) => {
   return { success: true, message: "User Allowed" };
 };
 
-exports.blockUser = async (data) => {
+exports.blockUser = async (data, requesterId) => {
   const { id } = data;
+  const target = await userModel.findUserById(id);
+  if (!target) {
+    return { success: false, statusCode: 404, message: "ไม่พบผู้ใช้งาน" };
+  }
+  if (
+    String(target.role).toLowerCase() === "admin" ||
+    String(id) === String(requesterId)
+  ) {
+    return {
+      success: false,
+      statusCode: 403,
+      message: "ไม่สามารถระงับบัญชีผู้ดูแลระบบได้",
+    };
+  }
   await userModel.updateUserStatus(id, "inactive");
   return { success: true, message: "User Blocked" };
 };
